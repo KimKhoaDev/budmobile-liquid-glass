@@ -2,8 +2,10 @@ package com.phimbud.mobile.ui.screens.player
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.os.Build
 import android.util.TypedValue
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
@@ -31,9 +33,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.phimbud.mobile.player.PhimBudPlayerManager
@@ -51,14 +57,50 @@ fun PlayerScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
-    // Force landscape in player
+    // Force landscape, immersive fullscreen, notch cutout extension, and keep screen on
     DisposableEffect(Unit) {
         val activity = context as? Activity
+        val window = activity?.window
         val origOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
+        // Keep screen on while playing video
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Extend into display cutout (notch / punch hole camera) for Samsung A56 and modern tall displays
+        val origCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window?.attributes?.layoutInDisplayCutoutMode
+        } else null
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && window != null) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+
+        // Hide system bars (Status bar & Navigation bar) for immersive edge-to-edge fullscreen
+        if (window != null) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+            insetsController.hide(WindowInsetsCompat.Type.systemBars())
+            insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
         onDispose {
             activity?.requestedOrientation = origOrientation
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && window != null && origCutoutMode != null) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode = origCutoutMode
+                }
+            }
+
+            if (window != null) {
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+                val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+                insetsController.show(WindowInsetsCompat.Type.systemBars())
+            }
         }
     }
 
@@ -70,6 +112,9 @@ fun PlayerScreen(
     var duration by remember { mutableStateOf(0L) }
     var controlsVisible by remember { mutableStateOf(true) }
     var isLocked by remember { mutableStateOf(false) }
+
+    // Video display aspect ratio mode: FIT (16:9), ZOOM (100% full screen on Samsung 19.5:9), FILL (stretch)
+    var resizeMode by remember { mutableStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
 
     var showSubtitleDialog by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
@@ -185,6 +230,7 @@ fun PlayerScreen(
                 PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = false
+                    this.resizeMode = resizeMode
                     layoutParams = FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
@@ -203,6 +249,9 @@ fun PlayerScreen(
                         setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                     }
                 }
+            },
+            update = { playerView ->
+                playerView.resizeMode = resizeMode
             },
             modifier = Modifier.fillMaxSize()
         )
@@ -305,6 +354,47 @@ fun PlayerScreen(
                                     Text(
                                         text = readyState?.activeSubtitle?.let { "Sub: ${it.label}" } ?: "Sub: Tắt",
                                         color = if (readyState?.activeSubtitle != null) Color.White else Color.LightGray,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+
+                            // Aspect Ratio / Fullscreen Scale Button (Fit 16:9 vs Zoom 19.5:9 vs Fill)
+                            Surface(
+                                onClick = {
+                                    resizeMode = when (resizeMode) {
+                                        AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                        else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    }
+                                },
+                                color = if (resizeMode != AspectRatioFrameLayout.RESIZE_MODE_FIT) NetflixRed.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = when (resizeMode) {
+                                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> Icons.Default.ZoomOutMap
+                                            AspectRatioFrameLayout.RESIZE_MODE_FILL -> Icons.Default.AspectRatio
+                                            else -> Icons.Default.FitScreen
+                                        },
+                                        contentDescription = "Tỉ lệ màn hình",
+                                        tint = if (resizeMode != AspectRatioFrameLayout.RESIZE_MODE_FIT) NetflixRed else Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = when (resizeMode) {
+                                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "Tràn viền"
+                                            AspectRatioFrameLayout.RESIZE_MODE_FILL -> "Kéo giãn"
+                                            else -> "Chuẩn"
+                                        },
+                                        color = if (resizeMode != AspectRatioFrameLayout.RESIZE_MODE_FIT) Color.White else Color.LightGray,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
