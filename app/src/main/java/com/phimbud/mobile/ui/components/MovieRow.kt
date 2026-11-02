@@ -34,7 +34,11 @@ fun MovieRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(movies, key = { it.fid }) { movie ->
+            items(
+                items = movies,
+                key = { it.fid },
+                contentType = { "movie_card" }
+            ) { movie ->
                 MovieCard(
                     movie = movie,
                     onClick = { onMovieClick(movie) }

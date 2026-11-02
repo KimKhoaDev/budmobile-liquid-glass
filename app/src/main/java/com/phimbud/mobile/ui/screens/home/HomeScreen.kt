@@ -2,8 +2,7 @@ package com.phimbud.mobile.ui.screens.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -30,7 +29,6 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val scrollState = rememberScrollState()
 
     Box(
         modifier = modifier
@@ -63,72 +61,86 @@ fun HomeScreen(
                 val feed = state.feed
                 val heroMovie = feed.trending.firstOrNull() ?: feed.movies.firstOrNull()
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState)
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize()
                 ) {
                     // Hero Banner
                     if (heroMovie != null) {
-                        HeroBanner(
-                            movie = heroMovie,
-                            onPlayClick = {
-                                viewModel.playMovie(heroMovie, onPlayClick)
-                            },
-                            onInfoClick = { onMovieClick(heroMovie) }
-                        )
+                        item(key = "hero_banner", contentType = "hero") {
+                            HeroBanner(
+                                movie = heroMovie,
+                                onPlayClick = {
+                                    viewModel.playMovie(heroMovie, onPlayClick)
+                                },
+                                onInfoClick = { onMovieClick(heroMovie) }
+                            )
+                        }
                     }
 
                     // Content Rows
                     if (feed.watching.isNotEmpty()) {
-                        MovieRow(
-                            title = "Tiếp tục xem",
-                            movies = feed.watching,
-                            onMovieClick = onMovieClick
-                        )
+                        item(key = "row_watching", contentType = "movie_row") {
+                            MovieRow(
+                                title = "Tiếp tục xem",
+                                movies = feed.watching,
+                                onMovieClick = onMovieClick
+                            )
+                        }
                     }
 
                     if (feed.trending.isNotEmpty()) {
-                        MovieRow(
-                            title = "Xu hướng thịnh hành",
-                            movies = feed.trending,
-                            onMovieClick = onMovieClick
-                        )
+                        item(key = "row_trending", contentType = "movie_row") {
+                            MovieRow(
+                                title = "Xu hướng thịnh hành",
+                                movies = feed.trending,
+                                onMovieClick = onMovieClick
+                            )
+                        }
                     }
 
                     if (feed.updated.isNotEmpty()) {
-                        MovieRow(
-                            title = "Mới cập nhật",
-                            movies = feed.updated,
-                            onMovieClick = onMovieClick
-                        )
+                        item(key = "row_updated", contentType = "movie_row") {
+                            MovieRow(
+                                title = "Mới cập nhật",
+                                movies = feed.updated,
+                                onMovieClick = onMovieClick
+                            )
+                        }
                     }
 
                     if (feed.shows.isNotEmpty()) {
-                        MovieRow(
-                            title = "Phim bộ chọn lọc",
-                            movies = feed.shows,
-                            onMovieClick = onMovieClick
-                        )
+                        item(key = "row_shows", contentType = "movie_row") {
+                            MovieRow(
+                                title = "Phim bộ chọn lọc",
+                                movies = feed.shows,
+                                onMovieClick = onMovieClick
+                            )
+                        }
                     }
 
                     if (feed.movies.isNotEmpty()) {
-                        MovieRow(
-                            title = "Phim lẻ đặc sắc",
-                            movies = feed.movies,
-                            onMovieClick = onMovieClick
-                        )
+                        item(key = "row_movies", contentType = "movie_row") {
+                            MovieRow(
+                                title = "Phim lẻ đặc sắc",
+                                movies = feed.movies,
+                                onMovieClick = onMovieClick
+                            )
+                        }
                     }
 
                     if (feed.wishlist.isNotEmpty()) {
-                        MovieRow(
-                            title = "Danh sách của tôi",
-                            movies = feed.wishlist,
-                            onMovieClick = onMovieClick
-                        )
+                        item(key = "row_wishlist", contentType = "movie_row") {
+                            MovieRow(
+                                title = "Danh sách của tôi",
+                                movies = feed.wishlist,
+                                onMovieClick = onMovieClick
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(30.dp))
+                    item(key = "bottom_spacer", contentType = "spacer") {
+                        Spacer(modifier = Modifier.height(30.dp))
+                    }
                 }
 
                 // Top Header Overlay (Logo + Search Button)

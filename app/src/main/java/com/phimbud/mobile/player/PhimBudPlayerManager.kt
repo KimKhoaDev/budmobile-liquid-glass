@@ -9,6 +9,8 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
@@ -21,12 +23,18 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 @OptIn(UnstableApi::class)
-class PhimBudPlayerManager(private val context: Context) {
+class PhimBudPlayerManager(
+    private val context: Context,
+    baseOkHttpClient: OkHttpClient? = null
+) {
 
-    private val cookieJar = PersistentCookieJar(context)
-    private val playerOkHttpClient = OkHttpClient.Builder()
-        .cookieJar(cookieJar)
-        .addInterceptor(BrowserHeadersInterceptor())
+    private val playerOkHttpClient: OkHttpClient = (
+        baseOkHttpClient?.newBuilder()
+            ?: OkHttpClient.Builder()
+                .cookieJar(PersistentCookieJar(context))
+                .addInterceptor(BrowserHeadersInterceptor())
+        )
+        .cache(null) // Share ConnectionPool/Dispatcher/CookieJar, but avoid filling API JSON disk cache with HLS .ts segments
         .addInterceptor(HlsDecryptInterceptor())
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -40,7 +48,20 @@ class PhimBudPlayerManager(private val context: Context) {
     private val localDataSourceFactory = DefaultDataSource.Factory(context)
 
     fun createPlayer(): ExoPlayer {
-        val player = ExoPlayer.Builder(context)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 15_000,
+                /* maxBufferMs = */ 50_000,
+                /* bufferForPlaybackMs = */ 1_200,
+                /* bufferForPlaybackAfterRebufferMs = */ 2_500
+            )
+            .build()
+
+        val renderersFactory = DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+
+        val player = ExoPlayer.Builder(context, renderersFactory)
+            .setLoadControl(loadControl)
             .setSeekBackIncrementMs(10000)
             .setSeekForwardIncrementMs(10000)
             .build()

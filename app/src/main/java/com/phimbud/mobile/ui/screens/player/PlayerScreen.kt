@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,20 +29,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.OnPictureInPictureModeChangedProvider
+import androidx.core.app.PictureInPictureModeChangedInfo
+import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import com.phimbud.mobile.PhimBudApp
 import com.phimbud.mobile.player.PhimBudPlayerManager
 import com.phimbud.mobile.ui.theme.*
 import kotlinx.coroutines.delay
@@ -61,7 +72,6 @@ fun PlayerScreen(
     DisposableEffect(Unit) {
         val activity = context as? Activity
         val window = activity?.window
-        val origOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
         // Keep screen on while playing video
@@ -87,7 +97,7 @@ fun PlayerScreen(
         }
 
         onDispose {
-            activity?.requestedOrientation = origOrientation
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && window != null && origCutoutMode != null) {
@@ -104,21 +114,73 @@ fun PlayerScreen(
         }
     }
 
-    val playerManager = remember { PhimBudPlayerManager(context) }
+    val playerManager = remember {
+        (context.applicationContext as? PhimBudApp)?.repository?.playerManager
+            ?: PhimBudPlayerManager(context)
+    }
     val exoPlayer = remember { playerManager.createPlayer() }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var isPlaying by remember { mutableStateOf(false) }
-    var currentPosition by remember { mutableStateOf(0L) }
-    var duration by remember { mutableStateOf(0L) }
+    var isBuffering by remember { mutableStateOf(false) }
+    var playbackError by remember { mutableStateOf<String?>(null) }
+    var duration by remember { mutableLongStateOf(0L) }
     var controlsVisible by remember { mutableStateOf(true) }
+    var controlsInteractionTick by remember { mutableIntStateOf(0) }
     var isLocked by remember { mutableStateOf(false) }
+    var isInPipMode by remember {
+        val act = context as? Activity
+        mutableStateOf(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && act?.isInPictureInPictureMode == true)
+    }
+
+    // Pause video & audio on ON_STOP (screen locked with Power button, PiP window closed, or app backgrounded without PiP).
+    // Note: Entering PiP only transitions to ON_PAUSE (still STARTED), so PiP playback continues uninterrupted!
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                exoPlayer.pause()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Track Picture-in-Picture mode changes so HUD & dialogs hide automatically inside tiny PiP window
+    DisposableEffect(context) {
+        val pipProvider = context as? OnPictureInPictureModeChangedProvider
+        val listener = Consumer<PictureInPictureModeChangedInfo> { info ->
+            isInPipMode = info.isInPictureInPictureMode
+            if (info.isInPictureInPictureMode) {
+                controlsVisible = false
+            }
+        }
+        pipProvider?.addOnPictureInPictureModeChangedListener(listener)
+        onDispose {
+            pipProvider?.removeOnPictureInPictureModeChangedListener(listener)
+        }
+    }
 
     // Video display aspect ratio mode: FIT (16:9), ZOOM (100% full screen on Samsung 19.5:9), FILL (stretch)
-    var resizeMode by remember { mutableStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
 
     var showSubtitleDialog by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
 
+    // Re-enforce immersive system-bar hiding after AlertDialogs close (Dialog windows cause Android to re-show status/nav bars)
+    LaunchedEffect(showSubtitleDialog, showServerDialog, controlsVisible) {
+        if (!showSubtitleDialog && !showServerDialog) {
+            val window = (context as? Activity)?.window
+            if (window != null) {
+                val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+                insetsController.hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    var currentLoadedFid by remember { mutableStateOf<String?>(null) }
     var currentLoadedUrl by remember { mutableStateOf<String?>(null) }
     var currentLoadedSubFile by remember { mutableStateOf<File?>(null) }
 
@@ -130,9 +192,16 @@ fun PlayerScreen(
             }
 
             override fun onPlaybackStateChanged(state: Int) {
+                isBuffering = (state == Player.STATE_BUFFERING)
                 if (state == Player.STATE_READY) {
+                    playbackError = null
                     duration = exoPlayer.duration.coerceAtLeast(0L)
                 }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                isBuffering = false
+                playbackError = "Lỗi luồng phát video (${error.errorCodeName}). Bạn có thể thử lại hoặc đổi Server khác."
             }
         }
         exoPlayer.addListener(listener)
@@ -145,37 +214,36 @@ fun PlayerScreen(
         }
     }
 
-    // Auto update seekbar position
-    LaunchedEffect(isPlaying) {
-        while (isPlaying) {
-            currentPosition = exoPlayer.currentPosition.coerceAtLeast(0L)
-            duration = exoPlayer.duration.coerceAtLeast(0L)
-            delay(500)
-        }
-    }
-
-    // Controls auto-hide timer
-    LaunchedEffect(controlsVisible, isPlaying) {
-        if (controlsVisible && isPlaying && !isLocked) {
-            delay(4000)
+    // Controls auto-hide timer (works for both unlocked HUD and locked "Mở khóa" pill; pauses while dialogs are open)
+    LaunchedEffect(controlsVisible, isPlaying, isLocked, showSubtitleDialog, showServerDialog, controlsInteractionTick) {
+        if (controlsVisible && !showSubtitleDialog && !showServerDialog && (isPlaying || isLocked)) {
+            delay(if (isLocked) 2800L else 4000L)
             controlsVisible = false
         }
     }
 
     // Prepare player when state is Ready
     LaunchedEffect(uiState) {
+        if (uiState is PlayerUiState.Loading) {
+            playbackError = null
+            return@LaunchedEffect
+        }
         val ready = uiState as? PlayerUiState.Ready ?: return@LaunchedEffect
-        val isFirstLoad = (currentLoadedUrl == null)
+        playbackError = null
+
+        val isNewEpisode = (currentLoadedFid != ready.watchInfo.fid)
         val currentPos = exoPlayer.currentPosition
-        val wasPlaying = exoPlayer.isPlaying
+        val shouldPlay = exoPlayer.playWhenReady
 
-        val mediaSource = playerManager.buildMediaSource(
-            ready.m3u8Url,
-            ready.activeSubtitleFile,
-            ready.activeSubtitle?.language ?: "vi"
-        )
+        val activeLang = ready.activeSubtitle?.language ?: "vi"
 
-        if (isFirstLoad) {
+        if (isNewEpisode) {
+            val mediaSource = playerManager.buildMediaSource(
+                ready.m3u8Url,
+                ready.activeSubtitleFile,
+                activeLang
+            )
+            duration = (ready.watchInfo.durationSeconds * 1000).toLong().coerceAtLeast(0L)
             val resumePos = ready.watchInfo.lastCurrentTime?.times(1000L) ?: 0L
             exoPlayer.setMediaSource(mediaSource)
             if (resumePos > 0) {
@@ -183,12 +251,22 @@ fun PlayerScreen(
             }
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
+            currentLoadedSubFile = ready.activeSubtitleFile
         } else {
-            // Only update media source if URL or subtitle actually changed
-            if (currentLoadedUrl != ready.m3u8Url || currentLoadedSubFile != ready.activeSubtitleFile) {
+            val urlChanged = (currentLoadedUrl != ready.m3u8Url)
+            // Avoid rebuilding MediaSource (and losing the 50s video buffer) when user simply turns subtitles OFF!
+            val subChangedToNewFile = (ready.activeSubtitleFile != null && currentLoadedSubFile != ready.activeSubtitleFile)
+
+            if (urlChanged || subChangedToNewFile) {
+                val mediaSource = playerManager.buildMediaSource(
+                    ready.m3u8Url,
+                    ready.activeSubtitleFile,
+                    activeLang
+                )
                 exoPlayer.setMediaSource(mediaSource, currentPos)
                 exoPlayer.prepare()
-                exoPlayer.playWhenReady = wasPlaying
+                exoPlayer.playWhenReady = shouldPlay
+                currentLoadedSubFile = ready.activeSubtitleFile
             }
         }
 
@@ -196,6 +274,7 @@ fun PlayerScreen(
             exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                 .buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setPreferredTextLanguage(activeLang)
                 .build()
         } else {
             exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
@@ -204,8 +283,8 @@ fun PlayerScreen(
                 .build()
         }
 
+        currentLoadedFid = ready.watchInfo.fid
         currentLoadedUrl = ready.m3u8Url
-        currentLoadedSubFile = ready.activeSubtitleFile
     }
 
     Box(
@@ -216,12 +295,7 @@ fun PlayerScreen(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
-                if (!isLocked) {
-                    controlsVisible = !controlsVisible
-                } else {
-                    // Tap when locked reveals lock button briefly
-                    controlsVisible = true
-                }
+                controlsVisible = !controlsVisible
             }
     ) {
         // ExoPlayer Surface
@@ -256,16 +330,67 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Loading indicator
-        if (uiState is PlayerUiState.Loading) {
+        // Loading / Buffering indicator
+        if (uiState is PlayerUiState.Loading || (uiState is PlayerUiState.Ready && isBuffering)) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(50.dp))
             }
         }
 
+        // Error state overlay (handles both API errors and ExoPlayer HLS playback errors)
+        val activeErrorMessage = (uiState as? PlayerUiState.Error)?.message ?: playbackError
+        if (activeErrorMessage != null && !isInPipMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = activeErrorMessage,
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick = {
+                                if (uiState is PlayerUiState.Ready && playbackError != null) {
+                                    playbackError = null
+                                    exoPlayer.prepare()
+                                    exoPlayer.play()
+                                } else {
+                                    playbackError = null
+                                    viewModel.loadStream(viewModel.watchFid, viewModel.currentServer)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = NetflixRed)
+                        ) {
+                            Text("Thử lại", fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(
+                            onClick = { showServerDialog = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                        ) {
+                            Text("Đổi Server (hiện tại: ${viewModel.currentServer})")
+                        }
+                        TextButton(onClick = onBackClick) {
+                            Text("Quay lại", color = Color.LightGray)
+                        }
+                    }
+                }
+            }
+        }
+
         // Overlay Controls
         AnimatedVisibility(
-            visible = controlsVisible,
+            visible = controlsVisible && !isInPipMode && activeErrorMessage == null,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
@@ -273,23 +398,39 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.55f))
+                    .background(if (isLocked) Color.Transparent else Color.Black.copy(alpha = 0.55f))
             ) {
                 if (isLocked) {
-                    // Only unlock button when locked
-                    IconButton(
-                        onClick = { isLocked = false },
+                    // Unobtrusive Netflix-style unlock pill (does not dim the video or cover center faces)
+                    Surface(
+                        onClick = {
+                            isLocked = false
+                            controlsInteractionTick++
+                        },
+                        color = NetflixDarkGray.copy(alpha = 0.88f),
+                        shape = RoundedCornerShape(24.dp),
                         modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(54.dp)
-                            .background(NetflixCard.copy(alpha = 0.8f), CircleShape)
+                            .align(Alignment.TopEnd)
+                            .padding(20.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Mở khóa màn hình",
-                            tint = NetflixRed,
-                            modifier = Modifier.size(28.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Mở khóa màn hình",
+                                tint = NetflixRed,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Mở khóa",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 } else {
                     // Full Netflix Player Controls
@@ -307,7 +448,7 @@ fun PlayerScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = onBackClick) {
                                 Icon(
-                                    imageVector = Icons.Default.ArrowBack,
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Quay lại",
                                     tint = Color.White
                                 )
@@ -327,7 +468,7 @@ fun PlayerScreen(
                             // Server Button
                             TextButton(onClick = { showServerDialog = true }) {
                                 Text(
-                                    text = "Server ${readyState?.currentServer ?: "1"}",
+                                    text = "Server ${readyState?.currentServer ?: viewModel.currentServer}",
                                     color = Color.White,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -363,6 +504,7 @@ fun PlayerScreen(
                             // Aspect Ratio / Fullscreen Scale Button (Fit 16:9 vs Zoom 19.5:9 vs Fill)
                             Surface(
                                 onClick = {
+                                    controlsInteractionTick++
                                     resizeMode = when (resizeMode) {
                                         AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                                         AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FILL
@@ -422,7 +564,10 @@ fun PlayerScreen(
                     ) {
                         // Rewind 10s
                         IconButton(
-                            onClick = { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0L)) },
+                            onClick = {
+                                controlsInteractionTick++
+                                exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0L))
+                            },
                             modifier = Modifier.size(54.dp)
                         ) {
                             Icon(
@@ -438,6 +583,7 @@ fun PlayerScreen(
                         // Play/Pause
                         IconButton(
                             onClick = {
+                                controlsInteractionTick++
                                 if (isPlaying) exoPlayer.pause() else exoPlayer.play()
                             },
                             modifier = Modifier
@@ -456,7 +602,11 @@ fun PlayerScreen(
 
                         // Forward 10s
                         IconButton(
-                            onClick = { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(duration)) },
+                            onClick = {
+                                controlsInteractionTick++
+                                val maxDur = exoPlayer.duration.takeIf { it > 0 } ?: duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                                exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(maxDur))
+                            },
                             modifier = Modifier.size(54.dp)
                         ) {
                             Icon(
@@ -468,64 +618,30 @@ fun PlayerScreen(
                         }
                     }
 
-                    // Bottom Bar (Seekbar, Time, Next Episode)
-                    Column(
+                    // Bottom Bar (Isolated composable so 500ms position ticks never recompose PlayerScreen or AndroidView)
+                    PlayerBottomBar(
+                        exoPlayer = exoPlayer,
+                        isPlaying = isPlaying,
+                        controlsVisible = controlsVisible,
+                        knownDuration = duration,
+                        nextTitleFid = readyState?.watchInfo?.nextTitleFid,
+                        onScrubActivity = { controlsInteractionTick++ },
+                        onNextEpisodeClick = { nextFid ->
+                            val prevPosSec = exoPlayer.currentPosition / 1000
+                            exoPlayer.pause()
+                            viewModel.playNextEpisode(nextFid, prevPosSec)
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.BottomCenter)
                             .padding(horizontal = 24.dp, vertical = 14.dp)
-                    ) {
-                        // Time labels & Next Episode
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "${formatTime(currentPosition)} / ${formatTime(duration)}",
-                                color = Color.White,
-                                fontSize = 13.sp
-                            )
-
-                            if (!readyState?.watchInfo?.nextTitleFid.isNullOrBlank()) {
-                                TextButton(
-                                    onClick = {
-                                        viewModel.loadStream(readyState!!.watchInfo.nextTitleFid!!)
-                                    }
-                                ) {
-                                    Text(
-                                        text = "Tập tiếp theo ▶",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
-                                    )
-                                }
-                            }
-                        }
-
-                        // Slider
-                        Slider(
-                            value = if (duration > 0) currentPosition.toFloat() / duration else 0f,
-                            onValueChange = { frac ->
-                                currentPosition = (frac * duration).toLong()
-                            },
-                            onValueChangeFinished = {
-                                exoPlayer.seekTo(currentPosition)
-                            },
-                            colors = SliderDefaults.colors(
-                                thumbColor = NetflixRed,
-                                activeTrackColor = NetflixRed,
-                                inactiveTrackColor = Color.Gray.copy(alpha = 0.5f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    )
                 }
             }
         }
 
         // Subtitle Picker Dialog
-        if (showSubtitleDialog) {
+        if (showSubtitleDialog && !isInPipMode) {
             val ready = uiState as? PlayerUiState.Ready
             val subtitles = ready?.subtitles ?: emptyList()
 
@@ -707,8 +823,9 @@ fun PlayerScreen(
         }
 
         // Server Picker Dialog
-        if (showServerDialog) {
+        if (showServerDialog && !isInPipMode) {
             val ready = uiState as? PlayerUiState.Ready
+            val activeServer = ready?.currentServer ?: viewModel.currentServer
             AlertDialog(
                 onDismissRequest = { showServerDialog = false },
                 title = { Text("Chọn Server phát", color = Color.White, fontWeight = FontWeight.Bold) },
@@ -720,10 +837,16 @@ fun PlayerScreen(
                             .verticalScroll(rememberScrollState())
                     ) {
                         listOf("1", "2", "3").forEach { srv ->
-                            val isSelected = ready?.currentServer == srv
+                            val isSelected = activeServer == srv
                             Surface(
                                 onClick = {
-                                    viewModel.switchServer(srv)
+                                    val hadPlaybackError = (playbackError != null)
+                                    playbackError = null
+                                    if (hadPlaybackError && srv == activeServer) {
+                                        viewModel.loadStream(viewModel.watchFid, srv)
+                                    } else {
+                                        viewModel.switchServer(srv)
+                                    }
                                     showServerDialog = false
                                 },
                                 color = if (isSelected) NetflixRed.copy(alpha = 0.2f) else Color.Transparent,
@@ -767,6 +890,91 @@ fun PlayerScreen(
                 shape = RoundedCornerShape(16.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun PlayerBottomBar(
+    exoPlayer: ExoPlayer,
+    isPlaying: Boolean,
+    controlsVisible: Boolean,
+    knownDuration: Long,
+    nextTitleFid: String?,
+    onScrubActivity: () -> Unit,
+    onNextEpisodeClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var currentPosition by remember { mutableLongStateOf(exoPlayer.currentPosition.coerceAtLeast(0L)) }
+    var duration by remember(knownDuration) {
+        mutableLongStateOf(knownDuration.coerceAtLeast(exoPlayer.duration.coerceAtLeast(0L)))
+    }
+    var isScrubbing by remember { mutableStateOf(false) }
+
+    // Only poll playback position when controls are actually visible!
+    LaunchedEffect(isPlaying, controlsVisible) {
+        if (controlsVisible) {
+            if (!isScrubbing) {
+                currentPosition = exoPlayer.currentPosition.coerceAtLeast(0L)
+            }
+            duration = exoPlayer.duration.coerceAtLeast(knownDuration).coerceAtLeast(0L)
+            while (isPlaying && controlsVisible) {
+                delay(500)
+                if (!isScrubbing) {
+                    currentPosition = exoPlayer.currentPosition.coerceAtLeast(0L)
+                }
+                val liveDur = exoPlayer.duration
+                if (liveDur > 0) {
+                    duration = liveDur
+                }
+            }
+        }
+    }
+
+    Column(modifier = modifier) {
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "${formatTime(currentPosition)} / ${formatTime(duration)}",
+                color = Color.White,
+                fontSize = 13.sp
+            )
+
+            if (!nextTitleFid.isNullOrBlank()) {
+                TextButton(
+                    onClick = { onNextEpisodeClick(nextTitleFid) }
+                ) {
+                    Text(
+                        text = "Tập tiếp theo ▶",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+
+        Slider(
+            value = if (duration > 0) (currentPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f,
+            onValueChange = { frac ->
+                isScrubbing = true
+                onScrubActivity()
+                currentPosition = (frac * duration).toLong()
+            },
+            onValueChangeFinished = {
+                exoPlayer.seekTo(currentPosition)
+                isScrubbing = false
+                onScrubActivity()
+            },
+            colors = SliderDefaults.colors(
+                thumbColor = NetflixRed,
+                activeTrackColor = NetflixRed,
+                inactiveTrackColor = Color.Gray.copy(alpha = 0.5f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

@@ -8,7 +8,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -109,7 +109,7 @@ fun DetailScreen(
                                     .align(Alignment.TopStart)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.ArrowBack,
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Quay lại",
                                     tint = Color.White
                                 )
@@ -265,7 +265,11 @@ fun DetailScreen(
 
                                 if (detail.seasons.size > 1) {
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        items(detail.seasons) { season ->
+                                        items(
+                                            items = detail.seasons,
+                                            key = { it.fid },
+                                            contentType = { "season_chip" }
+                                        ) { season ->
                                             val isSelected = state.selectedSeason?.fid == season.fid
                                             FilterChip(
                                                 selected = isSelected,
@@ -288,7 +292,11 @@ fun DetailScreen(
                         }
 
                         // Episode List Items
-                        items(state.episodes, key = { it.fid }) { episode ->
+                        items(
+                            items = state.episodes,
+                            key = { it.fid },
+                            contentType = { "episode_item" }
+                        ) { episode ->
                             EpisodeItem(
                                 episode = episode,
                                 onClick = { onPlayClick(episode.fid) },

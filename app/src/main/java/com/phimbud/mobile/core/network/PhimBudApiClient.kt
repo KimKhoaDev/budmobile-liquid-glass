@@ -14,15 +14,21 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 
+class SessionExpiredException(message: String = "Phiên đăng nhập đã hết hạn") : IOException(message)
+
 class PhimBudApiClient(private val context: Context) {
 
-    private val cookieJar = PersistentCookieJar(context)
+    val cookieJar = PersistentCookieJar(context)
     val hashResolver = RemoteHashResolver(context)
 
     val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
         .addInterceptor(BrowserHeadersInterceptor())
         .build()
+
+    private val noRedirectClient: OkHttpClient by lazy {
+        okHttpClient.newBuilder().followRedirects(false).build()
+    }
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -56,9 +62,10 @@ class PhimBudApiClient(private val context: Context) {
                 .addHeader("User-Agent", baseHeaders["User-Agent"]!!)
                 .build()
 
-            val res = okHttpClient.newCall(req).execute()
-            val body = res.body?.string().orEmpty()
-            if (res.isSuccessful && cookieJar.hasSession()) {
+            val isOk = okHttpClient.newCall(req).execute().use { res ->
+                res.isSuccessful && cookieJar.hasSession()
+            }
+            if (isOk) {
                 true
             } else {
                 throw IOException("Đăng nhập thất bại. Kiểm tra lại email và mật khẩu.")
@@ -73,49 +80,64 @@ class PhimBudApiClient(private val context: Context) {
                 .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
                 .build()
 
-            val res = okHttpClient.newCall(req).execute()
-            val text = res.body?.string() ?: throw IOException("Empty response")
-            val root = json.parseToJsonElement(text).jsonObject
-            val nodes = root["nodes"]?.jsonArray ?: throw IOException("No nodes in data")
-
-            // Parse UserSession from Node 1
-            var userSession = UserSession()
-            if (nodes.size > 1 && nodes[1] !is JsonNull) {
-                val node1Data = nodes[1].jsonObject["data"]?.jsonArray
-                if (node1Data != null) {
-                    val resolved = DevalueCodec.unflatten(node1Data) as? JsonObject
-                    if (resolved != null) {
-                        userSession = UserSession(
-                            userId = resolved["userId"]?.jsonPrimitive?.longOrNull ?: 0,
-                            userName = resolved["userName"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                            userEmail = resolved["userEmail"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                            canWatch = resolved["canWatch"]?.jsonPrimitive?.booleanOrNull ?: true,
-                            isAdmin = resolved["isAdmin"]?.jsonPrimitive?.booleanOrNull ?: false,
-                            isVip = true
-                        )
-                    }
+            val text = okHttpClient.newCall(req).execute().use { res ->
+                if (res.code == 401 || res.request.url.encodedPath.contains("/auth/login")) {
+                    throw SessionExpiredException()
                 }
+                res.body?.string() ?: throw IOException("Empty response")
             }
 
-            // Parse HomeFeed from Node 2
-            val feed = if (nodes.size > 2 && nodes[2] !is JsonNull) {
-                val node2Data = nodes[2].jsonObject["data"]?.jsonArray
-                if (node2Data != null) {
-                    val resolved = DevalueCodec.unflatten(node2Data) as? JsonObject
-                    if (resolved != null) {
-                        HomeFeed(
-                            trending = parseMovieList(resolved["trendingTitles"]),
-                            watching = parseMovieList(resolved["watching"]),
-                            updated = parseMovieList(resolved["updated"]),
-                            shows = parseMovieList(resolved["shows"]),
-                            movies = parseMovieList(resolved["movies"]),
-                            wishlist = parseMovieList(resolved["wishlist"])
-                        )
+            withContext(Dispatchers.Default) {
+                val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrElse {
+                    if (text.contains("/auth/login")) throw SessionExpiredException()
+                    throw it
+                }
+                if (root["type"]?.jsonPrimitive?.contentOrNull == "redirect" &&
+                    root["location"]?.jsonPrimitive?.contentOrNull?.contains("/auth/login") == true
+                ) {
+                    throw SessionExpiredException()
+                }
+                val nodes = root["nodes"]?.jsonArray ?: throw IOException("No nodes in data")
+
+                // Parse UserSession from Node 1
+                var userSession = UserSession()
+                if (nodes.size > 1 && nodes[1] !is JsonNull) {
+                    val node1Data = nodes[1].jsonObject["data"]?.jsonArray
+                    if (node1Data != null) {
+                        val resolved = DevalueCodec.unflatten(node1Data) as? JsonObject
+                        if (resolved != null) {
+                            userSession = UserSession(
+                                userId = resolved["userId"]?.jsonPrimitive?.longOrNull ?: 0,
+                                userName = resolved["userName"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                userEmail = resolved["userEmail"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                canWatch = resolved["canWatch"]?.jsonPrimitive?.booleanOrNull ?: true,
+                                isAdmin = resolved["isAdmin"]?.jsonPrimitive?.booleanOrNull ?: false,
+                                isVip = true
+                            )
+                        }
+                    }
+                }
+
+                // Parse HomeFeed from Node 2
+                val feed = if (nodes.size > 2 && nodes[2] !is JsonNull) {
+                    val node2Data = nodes[2].jsonObject["data"]?.jsonArray
+                    if (node2Data != null) {
+                        val resolved = DevalueCodec.unflatten(node2Data) as? JsonObject
+                        if (resolved != null) {
+                            HomeFeed(
+                                trending = parseMovieList(resolved["trendingTitles"]),
+                                watching = parseMovieList(resolved["watching"]),
+                                updated = parseMovieList(resolved["updated"]),
+                                shows = parseMovieList(resolved["shows"]),
+                                movies = parseMovieList(resolved["movies"]),
+                                wishlist = parseMovieList(resolved["wishlist"])
+                            )
+                        } else HomeFeed()
                     } else HomeFeed()
                 } else HomeFeed()
-            } else HomeFeed()
 
-            Pair(userSession, feed)
+                Pair(userSession, feed)
+            }
         }
     }
 
@@ -140,14 +162,14 @@ class PhimBudApiClient(private val context: Context) {
     suspend fun resolvePlayFid(fid: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             // Direct play endpoint redirects to episode watch page: /api/play/:fid -> /watch/:watchFid
-            val client = okHttpClient.newBuilder().followRedirects(false).build()
             val req = Request.Builder()
                 .url("https://phimbud.com/api/play/$fid")
                 .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
                 .build()
 
-            val res = client.newCall(req).execute()
-            val loc = res.header("Location")
+            val loc = noRedirectClient.newCall(req).execute().use { res ->
+                res.header("Location")
+            }
             if (!loc.isNullOrBlank()) {
                 val parts = loc.trimEnd('/').split('/')
                 parts.last()
@@ -164,9 +186,18 @@ class PhimBudApiClient(private val context: Context) {
                 .header("Referer", "https://phimbud.com/watch/$watchFid")
                 .build()
 
-            val res = okHttpClient.newCall(req).execute()
-            val text = res.body?.string() ?: throw IOException("Empty response")
+            val text = okHttpClient.newCall(req).execute().use { res ->
+                if (res.code == 401 || res.request.url.encodedPath.contains("/auth/login")) {
+                    throw SessionExpiredException()
+                }
+                res.body?.string() ?: throw IOException("Empty response")
+            }
             val root = json.parseToJsonElement(text).jsonObject
+            if (root["type"]?.jsonPrimitive?.contentOrNull == "redirect" &&
+                root["location"]?.jsonPrimitive?.contentOrNull?.contains("/auth/login") == true
+            ) {
+                throw SessionExpiredException()
+            }
             val nodes = root["nodes"]?.jsonArray ?: throw IOException("No nodes in watch data")
 
             var info = WatchInfo(fid = watchFid)
@@ -207,21 +238,32 @@ class PhimBudApiClient(private val context: Context) {
                 .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
                 .build()
 
-            var res = okHttpClient.newCall(req1).execute()
-            var text = res.body?.string().orEmpty()
+            var text = okHttpClient.newCall(req1).execute().use { res ->
+                if (res.code == 401 || res.request.url.encodedPath.contains("/auth/login")) {
+                    throw SessionExpiredException()
+                }
+                res.body?.string().orEmpty()
+            }
 
             // Check if returned redirect JSON: {"type":"redirect","location":"/title/slug~fid"}
             if (text.contains(""""type":"redirect"""")) {
                 val redirObj = json.parseToJsonElement(text).jsonObject
                 val loc = redirObj["location"]?.jsonPrimitive?.contentOrNull
                 if (!loc.isNullOrBlank()) {
+                    if (loc.contains("/auth/login")) {
+                        throw SessionExpiredException()
+                    }
                     targetUrl = "https://phimbud.com${loc.trimEnd('/')}/__data.json"
                     val req2 = Request.Builder()
                         .url(targetUrl)
                         .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
                         .build()
-                    res = okHttpClient.newCall(req2).execute()
-                    text = res.body?.string().orEmpty()
+                    text = okHttpClient.newCall(req2).execute().use { res ->
+                        if (res.code == 401 || res.request.url.encodedPath.contains("/auth/login")) {
+                            throw SessionExpiredException()
+                        }
+                        res.body?.string().orEmpty()
+                    }
                 }
             }
 
@@ -288,8 +330,9 @@ class PhimBudApiClient(private val context: Context) {
                 .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
                 .build()
 
-            val res = okHttpClient.newCall(req).execute()
-            val text = res.body?.string() ?: throw IOException("Empty response")
+            val text = okHttpClient.newCall(req).execute().use { res ->
+                res.body?.string() ?: throw IOException("Empty response")
+            }
             val resolved = DevalueCodec.extractRpcResult(text) as? JsonObject
                 ?: throw IOException("Failed to extract getEpisodes RPC result")
 
@@ -336,8 +379,9 @@ class PhimBudApiClient(private val context: Context) {
                 .header("x-sveltekit-pathname", "/watch/$watchFid")
                 .build()
 
-            val res = okHttpClient.newCall(req).execute()
-            val text = res.body?.string() ?: throw IOException("Empty response")
+            val text = okHttpClient.newCall(req).execute().use { res ->
+                res.body?.string() ?: throw IOException("Empty response")
+            }
             val resolved = DevalueCodec.extractRpcResult(text) as? JsonObject
                 ?: throw IOException("Failed to extract getVideoSrc RPC result")
 
@@ -363,8 +407,9 @@ class PhimBudApiClient(private val context: Context) {
                 .header("x-sveltekit-pathname", "/watch/$watchFid")
                 .build()
 
-            val res = okHttpClient.newCall(req).execute()
-            val text = res.body?.string() ?: throw IOException("Empty response")
+            val text = okHttpClient.newCall(req).execute().use { res ->
+                res.body?.string() ?: throw IOException("Empty response")
+            }
             val resolved = DevalueCodec.extractRpcResult(text) as? JsonArray
                 ?: throw IOException("Failed to extract getSubtitles RPC result")
 
@@ -406,7 +451,8 @@ class PhimBudApiClient(private val context: Context) {
     suspend fun downloadDecryptedSubtitle(sub: Subtitle, watchFid: String = ""): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
             val dir = File(context.cacheDir, "subtitles").apply { mkdirs() }
-            val file = File(dir, "${sub.id}_${sub.language}.srt")
+            val safeHash = sub.fileName.hashCode().toUInt().toString(16)
+            val file = File(dir, "${sub.id}_${sub.subsceneId}_${safeHash}_${sub.language}.srt")
             if (file.exists() && file.length() > 0) {
                 return@runCatching file
             }
@@ -417,14 +463,20 @@ class PhimBudApiClient(private val context: Context) {
                 .header("Referer", if (watchFid.isNotBlank()) "https://phimbud.com/watch/$watchFid" else "https://phimbud.com/")
                 .build()
 
-            val res = okHttpClient.newCall(req).execute()
-            if (!res.isSuccessful) {
-                throw IOException("HTTP ${res.code}: ${res.message}")
+            val base64Text = okHttpClient.newCall(req).execute().use { res ->
+                if (!res.isSuccessful) {
+                    throw IOException("HTTP ${res.code}: ${res.message}")
+                }
+                res.body?.string() ?: throw IOException("Empty subtitle")
             }
-            val base64Text = res.body?.string() ?: throw IOException("Empty subtitle")
             val decryptedSrt = SubtitleCipher.decrypt(sub.fileName, base64Text)
 
-            file.writeText(decryptedSrt, Charsets.UTF_8)
+            val tmpFile = File(dir, "${file.name}.tmp")
+            tmpFile.writeText(decryptedSrt, Charsets.UTF_8)
+            if (!tmpFile.renameTo(file)) {
+                file.writeText(decryptedSrt, Charsets.UTF_8)
+                tmpFile.delete()
+            }
             file
         }.onFailure { err ->
             android.util.Log.e("PhimBudApiClient", "Failed to download subtitle: ${sub.label} (${sub.fileName})", err)
@@ -445,28 +497,38 @@ class PhimBudApiClient(private val context: Context) {
                 .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
                 .build()
 
-            val res = okHttpClient.newCall(req).execute()
-            val text = res.body?.string() ?: throw IOException("Empty search index")
-            val array = json.parseToJsonElement(text).jsonArray
-
-            val list = mutableListOf<SearchItem>()
-            for (row in array) {
-                val r = row as? JsonArray ?: continue
-                if (r.size >= 7) {
-                    list.add(
-                        SearchItem(
-                            fid = r[0].jsonPrimitive.contentOrNull.orEmpty(),
-                            nameEn = r[1].jsonPrimitive.contentOrNull.orEmpty(),
-                            nameVi = r[2].jsonPrimitive.contentOrNull.orEmpty(),
-                            tmdbPoster = r[3].jsonPrimitive.contentOrNull,
-                            translation = r[4].jsonPrimitive.contentOrNull ?: "subtitle",
-                            imdbId = r[5].jsonPrimitive.contentOrNull,
-                            year = r[6].jsonPrimitive.intOrNull ?: 0
-                        )
-                    )
+            val text = okHttpClient.newCall(req).execute().use { res ->
+                if (!res.isSuccessful) {
+                    throw IOException("HTTP ${res.code}: ${res.message}")
                 }
+                res.body?.string() ?: throw IOException("Empty search index")
             }
-            list
+
+            withContext(Dispatchers.Default) {
+                val array = json.parseToJsonElement(text).jsonArray
+                val list = ArrayList<SearchItem>(array.size)
+                for (row in array) {
+                    val r = row as? JsonArray ?: continue
+                    if (r.size >= 7) {
+                        val nameEn = r[1].jsonPrimitive.contentOrNull.orEmpty()
+                        val nameVi = r[2].jsonPrimitive.contentOrNull.orEmpty()
+                        list.add(
+                            SearchItem(
+                                fid = r[0].jsonPrimitive.contentOrNull.orEmpty(),
+                                nameEn = nameEn,
+                                nameVi = nameVi,
+                                tmdbPoster = r[3].jsonPrimitive.contentOrNull,
+                                translation = r[4].jsonPrimitive.contentOrNull ?: "subtitle",
+                                imdbId = r[5].jsonPrimitive.contentOrNull,
+                                year = r[6].jsonPrimitive.intOrNull ?: 0,
+                                normalizedNameVi = SearchNormalizer.normalize(nameVi),
+                                normalizedNameEn = SearchNormalizer.normalize(nameEn)
+                            )
+                        )
+                    }
+                }
+                list
+            }
         }
     }
 
@@ -478,8 +540,12 @@ class PhimBudApiClient(private val context: Context) {
                 .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
                 .build()
 
-            val res = okHttpClient.newCall(req).execute()
-            val text = res.body?.string() ?: throw IOException("Empty browse response")
+            val text = okHttpClient.newCall(req).execute().use { res ->
+                if (!res.isSuccessful) {
+                    throw IOException("HTTP ${res.code}: ${res.message}")
+                }
+                res.body?.string() ?: throw IOException("Empty browse response")
+            }
             val obj = json.parseToJsonElement(text).jsonObject
             val titlesArray = obj["titles"] as? JsonArray ?: JsonArray(emptyList())
 
@@ -501,7 +567,7 @@ class PhimBudApiClient(private val context: Context) {
                 .header("x-sveltekit-pathname", "/watch/$fid")
                 .build()
 
-            okHttpClient.newCall(req).execute()
+            okHttpClient.newCall(req).execute().use { }
         }
     }
 
@@ -519,7 +585,7 @@ class PhimBudApiClient(private val context: Context) {
                 .header("x-sveltekit-pathname", "/title/$fid")
                 .build()
 
-            okHttpClient.newCall(req).execute()
+            okHttpClient.newCall(req).execute().use { }
         }
     }
 }

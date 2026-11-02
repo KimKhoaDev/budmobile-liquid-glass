@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -48,7 +51,7 @@ class MainActivity : ComponentActivity() {
             PhimBudTheme {
                 val navController = rememberNavController()
                 val isLoggedIn by repo.isLoggedIn.collectAsState()
-                val startDestination = if (isLoggedIn) "main" else "login"
+                val startDestination = remember { if (repo.isLoggedIn.value) "main" else "login" }
 
                 NavHost(
                     navController = navController,
@@ -63,6 +66,7 @@ class MainActivity : ComponentActivity() {
                             onLoginSuccess = {
                                 navController.navigate("main") {
                                     popUpTo("login") { inclusive = true }
+                                    launchSingleTop = true
                                 }
                             }
                         )
@@ -70,8 +74,12 @@ class MainActivity : ComponentActivity() {
 
                     // Main App Shell (with Bottom Nav: Home, Browse, Search, MyList)
                     composable("main") {
-                        isInPlayerScreen = false
-                        var currentTab by remember { mutableStateOf("home") }
+                        var currentTab by rememberSaveable { mutableStateOf("home") }
+                        val saveableStateHolder = rememberSaveableStateHolder()
+
+                        BackHandler(enabled = currentTab != "home") {
+                            currentTab = "home"
+                        }
 
                         Scaffold(
                             bottomBar = {
@@ -83,53 +91,66 @@ class MainActivity : ComponentActivity() {
                             containerColor = NetflixBlack
                         ) { innerPadding ->
                             Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-                                when (currentTab) {
-                                    "home" -> {
-                                        val homeVm = viewModel { HomeViewModel(repo) }
-                                        HomeScreen(
-                                            viewModel = homeVm,
-                                            onMovieClick = { movie ->
-                                                navController.navigate("detail/${movie.fid}")
-                                            },
-                                            onPlayClick = { watchFid ->
-                                                navController.navigate("player/$watchFid")
-                                            },
-                                            onSearchClick = {
-                                                currentTab = "search"
-                                            }
-                                        )
-                                    }
-                                    "browse" -> {
-                                        val browseVm = viewModel { BrowseViewModel(repo) }
-                                        BrowseScreen(
-                                            viewModel = browseVm,
-                                            onMovieClick = { movie ->
-                                                navController.navigate("detail/${movie.fid}")
-                                            }
-                                        )
-                                    }
-                                    "search" -> {
-                                        val searchVm = viewModel { SearchViewModel(repo) }
-                                        SearchScreen(
-                                            viewModel = searchVm,
-                                            onItemClick = { fid ->
-                                                navController.navigate("detail/$fid")
-                                            }
-                                        )
-                                    }
-                                    "mylist" -> {
-                                        val myListVm = viewModel { MyListViewModel(repo) }
-                                        MyListScreen(
-                                            viewModel = myListVm,
-                                            onMovieClick = { movie ->
-                                                navController.navigate("detail/${movie.fid}")
-                                            },
-                                            onLogoutClick = {
-                                                navController.navigate("login") {
-                                                    popUpTo("main") { inclusive = true }
+                                saveableStateHolder.SaveableStateProvider(currentTab) {
+                                    when (currentTab) {
+                                        "home" -> {
+                                            val homeVm = viewModel { HomeViewModel(repo) }
+                                            HomeScreen(
+                                                viewModel = homeVm,
+                                                onMovieClick = { movie ->
+                                                    navController.navigate("detail/${movie.fid}") {
+                                                        launchSingleTop = true
+                                                    }
+                                                },
+                                                onPlayClick = { watchFid ->
+                                                    navController.navigate("player/$watchFid") {
+                                                        launchSingleTop = true
+                                                    }
+                                                },
+                                                onSearchClick = {
+                                                    currentTab = "search"
                                                 }
-                                            }
-                                        )
+                                            )
+                                        }
+                                        "browse" -> {
+                                            val browseVm = viewModel { BrowseViewModel(repo) }
+                                            BrowseScreen(
+                                                viewModel = browseVm,
+                                                onMovieClick = { movie ->
+                                                    navController.navigate("detail/${movie.fid}") {
+                                                        launchSingleTop = true
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        "search" -> {
+                                            val searchVm = viewModel { SearchViewModel(repo) }
+                                            SearchScreen(
+                                                viewModel = searchVm,
+                                                onItemClick = { fid ->
+                                                    navController.navigate("detail/$fid") {
+                                                        launchSingleTop = true
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        "mylist" -> {
+                                            val myListVm = viewModel { MyListViewModel(repo) }
+                                            MyListScreen(
+                                                viewModel = myListVm,
+                                                onMovieClick = { movie ->
+                                                    navController.navigate("detail/${movie.fid}") {
+                                                        launchSingleTop = true
+                                                    }
+                                                },
+                                                onLogoutClick = {
+                                                    navController.navigate("login") {
+                                                        popUpTo("main") { inclusive = true }
+                                                        launchSingleTop = true
+                                                    }
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -141,18 +162,21 @@ class MainActivity : ComponentActivity() {
                         route = "detail/{fid}",
                         arguments = listOf(navArgument("fid") { type = NavType.StringType })
                     ) { backStackEntry ->
-                        isInPlayerScreen = false
                         val fid = backStackEntry.arguments?.getString("fid").orEmpty()
-                        val detailVm = remember(fid) { DetailViewModel(repo, fid) }
+                        val detailVm = viewModel(key = fid) { DetailViewModel(repo, fid) }
 
                         DetailScreen(
                             viewModel = detailVm,
                             onBackClick = { navController.popBackStack() },
                             onPlayClick = { watchFid ->
-                                navController.navigate("player/$watchFid")
+                                navController.navigate("player/$watchFid") {
+                                    launchSingleTop = true
+                                }
                             },
                             onRelatedMovieClick = { movie ->
-                                navController.navigate("detail/${movie.fid}")
+                                navController.navigate("detail/${movie.fid}") {
+                                    launchSingleTop = true
+                                }
                             }
                         )
                     }
@@ -162,14 +186,29 @@ class MainActivity : ComponentActivity() {
                         route = "player/{watchFid}",
                         arguments = listOf(navArgument("watchFid") { type = NavType.StringType })
                     ) { backStackEntry ->
-                        isInPlayerScreen = true
+                        DisposableEffect(Unit) {
+                            isInPlayerScreen = true
+                            onDispose {
+                                isInPlayerScreen = false
+                            }
+                        }
                         val watchFid = backStackEntry.arguments?.getString("watchFid").orEmpty()
-                        val playerVm = remember(watchFid) { PlayerViewModel(repo, watchFid) }
+                        val playerVm = viewModel(key = watchFid) { PlayerViewModel(repo, watchFid) }
 
                         PlayerScreen(
                             viewModel = playerVm,
                             onBackClick = { navController.popBackStack() }
                         )
+                    }
+                }
+
+                LaunchedEffect(isLoggedIn) {
+                    val currentRoute = navController.currentDestination?.route
+                    if (!isLoggedIn && currentRoute != null && currentRoute != "login") {
+                        navController.navigate("login") {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 }
             }
@@ -179,10 +218,12 @@ class MainActivity : ComponentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (isInPlayerScreen && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(Rational(16, 9))
-                .build()
-            enterPictureInPictureMode(params)
+            runCatching {
+                val params = PictureInPictureParams.Builder()
+                    .setAspectRatio(Rational(16, 9))
+                    .build()
+                enterPictureInPictureMode(params)
+            }
         }
     }
 }

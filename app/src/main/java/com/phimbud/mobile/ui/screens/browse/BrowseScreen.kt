@@ -69,7 +69,11 @@ fun BrowseScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(movies, key = { it.fid }) { movie ->
+            items(
+                items = movies,
+                key = { it.fid },
+                contentType = { "browse_movie" }
+            ) { movie ->
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()

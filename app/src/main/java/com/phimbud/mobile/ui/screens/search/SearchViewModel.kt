@@ -25,24 +25,32 @@ class SearchViewModel(private val repository: PhimBudRepository) : ViewModel() {
     private var searchJob: Job? = null
 
     init {
-        performSearch("")
+        searchJob = viewModelScope.launch {
+            executeSearch("")
+        }
     }
 
     fun onQueryChange(newQuery: String) {
         _query.value = newQuery
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            delay(200) // Debounce
-            performSearch(newQuery)
+            delay(if (repository.hasSearchIndex()) 80L else 180L)
+            executeSearch(newQuery)
         }
     }
 
-    private fun performSearch(q: String) {
-        viewModelScope.launch {
+    private suspend fun executeSearch(q: String) {
+        val showSpinner = !repository.hasSearchIndex()
+        if (showSpinner) {
             _isLoading.value = true
+        }
+        try {
             val items = repository.searchTitles(q)
             _results.value = items
-            _isLoading.value = false
+        } finally {
+            if (_isLoading.value) {
+                _isLoading.value = false
+            }
         }
     }
 }

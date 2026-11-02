@@ -3,9 +3,11 @@ package com.phimbud.mobile.ui.screens.detail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.phimbud.mobile.core.model.Episode
+import com.phimbud.mobile.core.model.Movie
 import com.phimbud.mobile.core.model.Season
 import com.phimbud.mobile.core.model.TitleDetail
 import com.phimbud.mobile.core.repository.PhimBudRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +32,8 @@ class DetailViewModel(
     private val _uiState = MutableStateFlow<DetailUiState>(DetailUiState.Loading)
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
 
+    private var seasonJob: Job? = null
+
     init {
         loadDetail()
     }
@@ -51,7 +55,7 @@ class DetailViewModel(
                     detail = detail,
                     episodes = episodes,
                     selectedSeason = firstSeason,
-                    isInWishlist = false
+                    isInWishlist = repository.isInWishlist(detail.fid) || repository.isInWishlist(fid)
                 )
             } else {
                 _uiState.value = DetailUiState.Error(
@@ -63,35 +67,65 @@ class DetailViewModel(
 
     fun selectSeason(season: Season) {
         val current = _uiState.value as? DetailUiState.Success ?: return
-        viewModelScope.launch {
+        if (current.selectedSeason?.fid == season.fid) return
+        _uiState.value = current.copy(selectedSeason = season)
+        seasonJob?.cancel()
+        seasonJob = viewModelScope.launch {
             val episodesRes = repository.getSeasonEpisodes(season.fid)
-            _uiState.value = current.copy(
-                selectedSeason = season,
-                episodes = episodesRes.getOrDefault(emptyList())
-            )
+            val latest = _uiState.value as? DetailUiState.Success ?: return@launch
+            if (latest.selectedSeason?.fid == season.fid) {
+                _uiState.value = latest.copy(
+                    episodes = episodesRes.getOrDefault(emptyList())
+                )
+            }
         }
     }
 
+    private var isResolvingPlay = false
+
     fun playFast(onPlayWatchFid: (String) -> Unit) {
+        if (isResolvingPlay) return
         viewModelScope.launch {
-            val current = _uiState.value as? DetailUiState.Success
-            // If episodes are loaded, play first episode or resolvePlayFid
-            val firstEpFid = current?.episodes?.firstOrNull()?.fid
-            if (firstEpFid != null) {
-                onPlayWatchFid(firstEpFid)
-            } else {
-                val res = repository.resolvePlayFid(fid)
-                onPlayWatchFid(res.getOrDefault(fid))
+            isResolvingPlay = true
+            try {
+                val current = _uiState.value as? DetailUiState.Success
+                val firstEpFid = current?.episodes?.firstOrNull()?.fid
+                // Match web behavior: /api/play/:fid resolves to user's last-watched episode (or episode 1)
+                val resolvedFid = repository.resolvePlayFid(fid).getOrNull()
+                val targetWatchFid = when {
+                    !resolvedFid.isNullOrBlank() && resolvedFid != fid -> resolvedFid
+                    firstEpFid != null -> firstEpFid
+                    !resolvedFid.isNullOrBlank() -> resolvedFid
+                    else -> fid
+                }
+                onPlayWatchFid(targetWatchFid)
+            } finally {
+                isResolvingPlay = false
             }
         }
     }
 
     fun toggleWishlist() {
         val current = _uiState.value as? DetailUiState.Success ?: return
+        val detail = current.detail
+        val nextState = !current.isInWishlist
+        _uiState.value = current.copy(isInWishlist = nextState)
+        val movieSnapshot = Movie(
+            fid = detail.fid,
+            nameEn = detail.nameEn,
+            nameVi = detail.nameVi,
+            intro = detail.intro,
+            tmdbPoster = detail.tmdbPoster,
+            tmdbBackdrop = detail.tmdbBackdrop,
+            imdbRating = detail.imdbRating,
+            genres = detail.genres
+        )
         viewModelScope.launch {
-            val nextState = !current.isInWishlist
-            _uiState.value = current.copy(isInWishlist = nextState)
-            repository.updateCollection(fid, if (nextState) "wishlist" else "")
+            repository.updateCollection(
+                fid = detail.fid,
+                status = if (nextState) "wishlist" else "",
+                movieSnapshot = movieSnapshot
+            )
         }
     }
 }

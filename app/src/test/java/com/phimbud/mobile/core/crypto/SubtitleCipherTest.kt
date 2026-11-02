@@ -19,4 +19,10 @@ class SubtitleCipherTest {
         val hex = key.joinToString("") { "%02x".format(it) }
         assertEquals("ffd25210367ed65a537e8c778154b6aba7ac31c79870b93cea1aa5b28777b754", hex)
     }
+
+    @Test
+    fun testCleanSubtitlePreservesItalicBoldAndStripsAssAndFontTags() {
+        val raw = "{\\an8}<font color=\"#ffff00\"><i>Xin chào</i> <b>PhimBud</b></font>"
+        assertEquals("<i>Xin chào</i> <b>PhimBud</b>", SubtitleCipher.cleanSubtitle(raw))
+    }
 }

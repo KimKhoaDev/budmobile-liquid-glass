@@ -34,7 +34,7 @@ class BrowseViewModel(private val repository: PhimBudRepository) : ViewModel() {
                 if (newItems.isEmpty()) {
                     hasMore = false
                 } else {
-                    _movies.value = _movies.value + newItems
+                    _movies.value = (_movies.value + newItems).distinctBy { it.fid }
                     currentPage++
                 }
             } else {

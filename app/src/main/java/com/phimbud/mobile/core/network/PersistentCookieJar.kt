@@ -20,20 +20,30 @@ class PersistentCookieJar(context: Context) : CookieJar {
 
     @Synchronized
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+        val now = System.currentTimeMillis()
         val editor = prefs.edit()
         for (cookie in cookies) {
             val key = "${cookie.domain}|${cookie.name}"
-            memoryCookies[key] = cookie
-            editor.putString(key, "${cookie.name}=${cookie.value}; domain=${cookie.domain}; path=${cookie.path}")
+            if (cookie.value.isEmpty() || cookie.expiresAt < now) {
+                memoryCookies.remove(key)
+                editor.remove(key)
+            } else {
+                memoryCookies[key] = cookie
+                editor.putString(
+                    key,
+                    "${cookie.name}=${cookie.value}; domain=${cookie.domain}; path=${cookie.path}; expiresAt=${cookie.expiresAt}"
+                )
+            }
         }
         editor.apply()
     }
 
     @Synchronized
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        val now = System.currentTimeMillis()
         val host = url.host
         return memoryCookies.values.filter { cookie ->
-            host == cookie.domain || host.endsWith("." + cookie.domain)
+            cookie.expiresAt >= now && (host == cookie.domain || host.endsWith("." + cookie.domain))
         }
     }
 
@@ -45,33 +55,47 @@ class PersistentCookieJar(context: Context) : CookieJar {
 
     @Synchronized
     fun hasSession(): Boolean {
-        return memoryCookies.values.any { it.name == "session" && it.value.isNotBlank() }
+        val now = System.currentTimeMillis()
+        return memoryCookies.values.any { it.name == "session" && it.value.isNotBlank() && it.expiresAt >= now }
     }
 
     private fun loadFromPrefs() {
+        val now = System.currentTimeMillis()
         val all = prefs.all
         for ((key, raw) in all) {
-            val str = raw as? String ?: continue
-            val parts = str.split("; ")
-            val nameVal = parts.getOrNull(0)?.split("=") ?: continue
-            val name = nameVal.getOrNull(0) ?: continue
-            val value = nameVal.getOrNull(1) ?: continue
-            var domain = "phimbud.com"
-            var path = "/"
+            runCatching {
+                val str = raw as? String ?: return@runCatching
+                val parts = str.split("; ")
+                val nameVal = parts.getOrNull(0)?.split("=", limit = 2) ?: return@runCatching
+                val name = nameVal.getOrNull(0)?.takeIf { it.isNotBlank() } ?: return@runCatching
+                val value = nameVal.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: return@runCatching
+                var domain = "phimbud.com"
+                var path = "/"
+                var expiresAt: Long? = null
 
-            for (p in parts) {
-                if (p.startsWith("domain=")) domain = p.removePrefix("domain=")
-                if (p.startsWith("path=")) path = p.removePrefix("path=")
+                for (p in parts) {
+                    when {
+                        p.startsWith("domain=") -> domain = p.removePrefix("domain=").trimStart('.')
+                        p.startsWith("path=") -> path = p.removePrefix("path=")
+                        p.startsWith("expiresAt=") -> expiresAt = p.removePrefix("expiresAt=").toLongOrNull()
+                    }
+                }
+
+                if (expiresAt != null && expiresAt < now) {
+                    return@runCatching
+                }
+
+                val builder = Cookie.Builder()
+                    .name(name)
+                    .value(value)
+                    .domain(domain)
+                    .path(path)
+                if (expiresAt != null) {
+                    builder.expiresAt(expiresAt)
+                }
+
+                memoryCookies[key] = builder.build()
             }
-
-            val cookie = Cookie.Builder()
-                .name(name)
-                .value(value)
-                .domain(domain)
-                .path(path)
-                .build()
-
-            memoryCookies[key] = cookie
         }
     }
 }

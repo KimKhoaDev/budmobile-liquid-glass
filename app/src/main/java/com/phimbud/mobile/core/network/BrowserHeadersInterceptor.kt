@@ -43,8 +43,8 @@ class BrowserHeadersInterceptor : Interceptor {
             builder.header("Sec-Fetch-Dest", "empty")
         }
 
-        // 3. Origin header for all POST requests or requests to phimbud.com
-        if (isPost && original.header("Origin") == null) {
+        // 3. Origin header for POST requests or cross-origin CORS requests (e.g. HLS CDN XHR)
+        if ((!isSameOrigin || isPost) && original.header("Origin") == null) {
             builder.header("Origin", "https://phimbud.com")
         }
 

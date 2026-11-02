@@ -18,6 +18,9 @@ import javax.crypto.spec.SecretKeySpec
  */
 object SubtitleCipher {
 
+    private val HTML_TAG_REGEX = Regex("<(?!/?[bi][\\s>])[^>]*>")
+    private val ASS_TAG_REGEX = Regex("\\{[^}]+\\}")
+
     fun rot19(fileName: String): String = buildString(fileName.length) {
         for (ch in fileName) {
             when (ch) {
@@ -62,8 +65,7 @@ object SubtitleCipher {
     }
 
     fun cleanSubtitle(text: String): String {
-        var t = text.replace(Regex("<(?!/?[bi][\\s>])[^>]*>"), "")
-        t = t.replace(Regex("\\{[^}]+\\}"), "")
-        return t
+        val strippedHtml = HTML_TAG_REGEX.replace(text, "")
+        return ASS_TAG_REGEX.replace(strippedHtml, "")
     }
 }

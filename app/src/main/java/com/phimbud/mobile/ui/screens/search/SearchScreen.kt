@@ -99,7 +99,11 @@ fun SearchScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(results, key = { it.fid }) { item ->
+                items(
+                    items = results,
+                    key = { it.fid },
+                    contentType = { "search_item" }
+                ) { item ->
                     SearchItemCard(item = item, onClick = { onItemClick(item.fid) })
                 }
             }

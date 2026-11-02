@@ -1,17 +1,32 @@
 package com.phimbud.mobile.core.repository
 
 import android.content.Context
+import android.util.LruCache
 import com.phimbud.mobile.core.model.*
 import com.phimbud.mobile.core.network.PhimBudApiClient
+import com.phimbud.mobile.core.network.SessionExpiredException
+import com.phimbud.mobile.player.PhimBudPlayerManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.Normalizer
 
 class PhimBudRepository(context: Context) {
 
+    private data class CacheEntry<T>(val value: T, val timestampMs: Long) {
+        fun isFresh(ttlMs: Long): Boolean = (System.currentTimeMillis() - timestampMs) <= ttlMs
+    }
+
+    companion object {
+        private const val DETAIL_CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
+    }
+
     val apiClient = PhimBudApiClient(context)
+    val playerManager = PhimBudPlayerManager(context.applicationContext, apiClient.okHttpClient)
 
     private val _isLoggedIn = MutableStateFlow(apiClient.hasSavedSession())
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
@@ -22,26 +37,48 @@ class PhimBudRepository(context: Context) {
     private val _homeFeed = MutableStateFlow(HomeFeed())
     val homeFeed: StateFlow<HomeFeed> = _homeFeed.asStateFlow()
 
+    @Volatile
     private var cachedSearchIndex: List<SearchItem> = emptyList()
+    private val searchIndexMutex = Mutex()
+    private val homeFeedMutex = Mutex()
+
+    private val detailCache = LruCache<String, CacheEntry<TitleDetail>>(20)
+    private val episodesCache = LruCache<String, CacheEntry<List<Episode>>>(30)
+
+    fun hasHomeFeedData(): Boolean {
+        val f = _homeFeed.value
+        return f.trending.isNotEmpty() || f.movies.isNotEmpty() || f.shows.isNotEmpty() || f.updated.isNotEmpty()
+    }
+
+    fun hasSearchIndex(): Boolean = cachedSearchIndex.isNotEmpty()
+
+    fun isInWishlist(fid: String): Boolean = _homeFeed.value.wishlist.any { it.fid == fid }
 
     suspend fun login(email: String, pass: String): Result<Boolean> {
         val res = apiClient.login(email, pass)
         if (res.isSuccess) {
             _isLoggedIn.value = true
-            loadHomeFeed()
         }
         return res
     }
 
     fun logout() {
         apiClient.logout()
+        detailCache.evictAll()
+        episodesCache.evictAll()
+        cachedSearchIndex = emptyList()
         _isLoggedIn.value = false
         _userSession.value = UserSession()
         _homeFeed.value = HomeFeed()
     }
 
-    suspend fun loadHomeFeed(): Result<HomeFeed> {
+    suspend fun loadHomeFeed(): Result<HomeFeed> = homeFeedMutex.withLock {
         val res = apiClient.getHomeFeed()
+        res.onFailure { err ->
+            if (err is SessionExpiredException) {
+                logout()
+            }
+        }
         return res.map { (user, feed) ->
             _userSession.value = user
             _homeFeed.value = feed
@@ -49,12 +86,33 @@ class PhimBudRepository(context: Context) {
         }
     }
 
-    suspend fun getTitleDetail(fid: String): Result<TitleDetail> {
-        return apiClient.getTitleDetail(fid)
+    suspend fun getTitleDetail(fid: String, forceRefresh: Boolean = false): Result<TitleDetail> {
+        if (!forceRefresh) {
+            detailCache.get(fid)?.takeIf { it.isFresh(DETAIL_CACHE_TTL_MS) }?.let {
+                return Result.success(it.value)
+            }
+        }
+        val res = apiClient.getTitleDetail(fid)
+        res.onFailure { err ->
+            if (err is SessionExpiredException) logout()
+        }
+        res.onSuccess { detail ->
+            detailCache.put(fid, CacheEntry(detail, System.currentTimeMillis()))
+        }
+        return res
     }
 
-    suspend fun getSeasonEpisodes(seasonFid: String): Result<List<Episode>> {
-        return apiClient.getSeasonEpisodes(seasonFid)
+    suspend fun getSeasonEpisodes(seasonFid: String, forceRefresh: Boolean = false): Result<List<Episode>> {
+        if (!forceRefresh) {
+            episodesCache.get(seasonFid)?.takeIf { it.isFresh(DETAIL_CACHE_TTL_MS) }?.let {
+                return Result.success(it.value)
+            }
+        }
+        val res = apiClient.getSeasonEpisodes(seasonFid)
+        res.onSuccess { episodes ->
+            episodesCache.put(seasonFid, CacheEntry(episodes, System.currentTimeMillis()))
+        }
+        return res
     }
 
     suspend fun resolvePlayFid(fid: String): Result<String> {
@@ -62,7 +120,9 @@ class PhimBudRepository(context: Context) {
     }
 
     suspend fun getWatchInfo(watchFid: String): Result<WatchInfo> {
-        return apiClient.getWatchInfo(watchFid)
+        return apiClient.getWatchInfo(watchFid).onFailure { err ->
+            if (err is SessionExpiredException) logout()
+        }
     }
 
     suspend fun getVideoSrc(watchFid: String, server: String): Result<String> {
@@ -79,20 +139,33 @@ class PhimBudRepository(context: Context) {
 
     suspend fun searchTitles(query: String): List<SearchItem> {
         if (cachedSearchIndex.isEmpty()) {
-            val res = apiClient.getAllTitlesIndex()
-            if (res.isSuccess) {
-                cachedSearchIndex = res.getOrDefault(emptyList())
+            searchIndexMutex.withLock {
+                if (cachedSearchIndex.isEmpty()) {
+                    val res = apiClient.getAllTitlesIndex()
+                    if (res.isSuccess) {
+                        cachedSearchIndex = res.getOrDefault(emptyList())
+                    }
+                }
             }
         }
 
-        if (query.isBlank()) return cachedSearchIndex.take(30)
+        val snapshot = cachedSearchIndex
+        if (snapshot.isEmpty()) return emptyList()
+        if (query.isBlank()) return snapshot.take(30)
 
-        val normalizedQuery = normalizeForSearch(query)
-        return cachedSearchIndex.filter { item ->
-            normalizeForSearch(item.nameVi).contains(normalizedQuery) ||
-            normalizeForSearch(item.nameEn).contains(normalizedQuery) ||
-            (item.imdbId != null && item.imdbId.contains(query, ignoreCase = true))
-        }.take(50)
+        return withContext(Dispatchers.Default) {
+            val normalizedQuery = SearchNormalizer.normalize(query)
+            val trimmedRaw = query.trim()
+            snapshot.asSequence()
+                .filter { item ->
+                    (normalizedQuery.isNotEmpty() && (
+                        item.normalizedNameVi.contains(normalizedQuery) ||
+                        item.normalizedNameEn.contains(normalizedQuery)
+                    )) || (item.imdbId != null && item.imdbId.contains(trimmedRaw, ignoreCase = true))
+                }
+                .take(50)
+                .toList()
+        }
     }
 
     suspend fun getBrowsePage(page: Int): Result<List<Movie>> {
@@ -103,16 +176,18 @@ class PhimBudRepository(context: Context) {
         apiClient.setPlaytime(fid, seconds)
     }
 
-    suspend fun updateCollection(fid: String, status: String) {
+    suspend fun updateCollection(fid: String, status: String, movieSnapshot: Movie? = null) {
+        val currentFeed = _homeFeed.value
+        val updatedWishlist = if (status == "wishlist") {
+            if (currentFeed.wishlist.any { it.fid == fid } || movieSnapshot == null) {
+                currentFeed.wishlist
+            } else {
+                listOf(movieSnapshot) + currentFeed.wishlist
+            }
+        } else {
+            currentFeed.wishlist.filterNot { it.fid == fid }
+        }
+        _homeFeed.value = currentFeed.copy(wishlist = updatedWishlist)
         apiClient.updateCollection(fid, status)
-    }
-
-    private fun normalizeForSearch(input: String): String {
-        val nfd = Normalizer.normalize(input.lowercase(), Normalizer.Form.NFD)
-        return Regex("\\p{InCombiningDiacriticalMarks}+").replace(nfd, "")
-            .replace('đ', 'd')
-            .replace('Đ', 'd')
-            .replace(Regex("[^a-z0-9 ]"), "")
-            .trim()
     }
 }

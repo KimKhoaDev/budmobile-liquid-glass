@@ -18,20 +18,37 @@ sealed class HomeUiState {
 
 class HomeViewModel(private val repository: PhimBudRepository) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
+    private val _uiState = MutableStateFlow<HomeUiState>(
+        if (repository.hasHomeFeedData()) {
+            HomeUiState.Success(repository.homeFeed.value)
+        } else {
+            HomeUiState.Loading
+        }
+    )
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
-        loadHomeFeed()
+        viewModelScope.launch {
+            repository.homeFeed.collect { feed ->
+                if (repository.hasHomeFeedData()) {
+                    _uiState.value = HomeUiState.Success(feed)
+                }
+            }
+        }
+        if (!repository.hasHomeFeedData()) {
+            loadHomeFeed()
+        }
     }
 
     fun loadHomeFeed() {
         viewModelScope.launch {
-            _uiState.value = HomeUiState.Loading
+            if (!repository.hasHomeFeedData()) {
+                _uiState.value = HomeUiState.Loading
+            }
             val res = repository.loadHomeFeed()
             if (res.isSuccess) {
                 _uiState.value = HomeUiState.Success(res.getOrThrow())
-            } else {
+            } else if (!repository.hasHomeFeedData()) {
                 _uiState.value = HomeUiState.Error(
                     res.exceptionOrNull()?.message ?: "Không thể tải dữ liệu trang chủ"
                 )
@@ -39,11 +56,19 @@ class HomeViewModel(private val repository: PhimBudRepository) : ViewModel() {
         }
     }
 
+    private var isResolvingPlay = false
+
     fun playMovie(movie: Movie, onPlayWatchFid: (String) -> Unit) {
+        if (isResolvingPlay) return
         viewModelScope.launch {
-            val res = repository.resolvePlayFid(movie.fid)
-            val watchFid = res.getOrDefault(movie.fid)
-            onPlayWatchFid(watchFid)
+            isResolvingPlay = true
+            try {
+                val res = repository.resolvePlayFid(movie.fid)
+                val watchFid = res.getOrDefault(movie.fid)
+                onPlayWatchFid(watchFid)
+            } finally {
+                isResolvingPlay = false
+            }
         }
     }
 }

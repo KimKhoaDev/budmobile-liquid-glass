@@ -9,7 +9,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -110,7 +110,7 @@ fun MyListScreen(
                 onLogoutClick()
             }) {
                 Icon(
-                    imageVector = Icons.Default.ExitToApp,
+                    imageVector = Icons.AutoMirrored.Filled.ExitToApp,
                     contentDescription = "Đăng xuất",
                     tint = NetflixTextSecondary
                 )
@@ -170,7 +170,11 @@ fun MyListScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(displayList, key = { it.fid }) { movie ->
+                items(
+                    items = displayList,
+                    key = { it.fid },
+                    contentType = { "mylist_movie" }
+                ) { movie ->
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
