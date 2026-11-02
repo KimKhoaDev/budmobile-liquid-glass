@@ -21,6 +21,7 @@ class PhimBudApiClient(private val context: Context) {
 
     val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
+        .addInterceptor(BrowserHeadersInterceptor())
         .build()
 
     private val json = Json {
@@ -160,7 +161,7 @@ class PhimBudApiClient(private val context: Context) {
         runCatching {
             val req = Request.Builder()
                 .url("https://phimbud.com/watch/$watchFid/__data.json")
-                .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
+                .header("Referer", "https://phimbud.com/watch/$watchFid")
                 .build()
 
             val res = okHttpClient.newCall(req).execute()
@@ -331,8 +332,8 @@ class PhimBudApiClient(private val context: Context) {
 
             val req = Request.Builder()
                 .url(url)
-                .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
-                .addHeader("x-sveltekit-pathname", "/watch/$watchFid")
+                .header("Referer", "https://phimbud.com/watch/$watchFid")
+                .header("x-sveltekit-pathname", "/watch/$watchFid")
                 .build()
 
             val res = okHttpClient.newCall(req).execute()
@@ -358,8 +359,8 @@ class PhimBudApiClient(private val context: Context) {
 
             val req = Request.Builder()
                 .url(url)
-                .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
-                .addHeader("x-sveltekit-pathname", "/watch/$watchFid")
+                .header("Referer", "https://phimbud.com/watch/$watchFid")
+                .header("x-sveltekit-pathname", "/watch/$watchFid")
                 .build()
 
             val res = okHttpClient.newCall(req).execute()
@@ -402,22 +403,31 @@ class PhimBudApiClient(private val context: Context) {
         }
     }
 
-    suspend fun downloadDecryptedSubtitle(sub: Subtitle): Result<File> = withContext(Dispatchers.IO) {
+    suspend fun downloadDecryptedSubtitle(sub: Subtitle, watchFid: String = ""): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
+            val dir = File(context.cacheDir, "subtitles").apply { mkdirs() }
+            val file = File(dir, "${sub.id}_${sub.language}.srt")
+            if (file.exists() && file.length() > 0) {
+                return@runCatching file
+            }
+
             val url = "https://phimbud.com/api/subtitle/${sub.subsceneId}/${sub.fileName}"
             val req = Request.Builder()
                 .url(url)
-                .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
+                .header("Referer", if (watchFid.isNotBlank()) "https://phimbud.com/watch/$watchFid" else "https://phimbud.com/")
                 .build()
 
             val res = okHttpClient.newCall(req).execute()
+            if (!res.isSuccessful) {
+                throw IOException("HTTP ${res.code}: ${res.message}")
+            }
             val base64Text = res.body?.string() ?: throw IOException("Empty subtitle")
             val decryptedSrt = SubtitleCipher.decrypt(sub.fileName, base64Text)
 
-            val dir = File(context.cacheDir, "subtitles").apply { mkdirs() }
-            val file = File(dir, "${sub.id}_${sub.language}.srt")
             file.writeText(decryptedSrt, Charsets.UTF_8)
             file
+        }.onFailure { err ->
+            android.util.Log.e("PhimBudApiClient", "Failed to download subtitle: ${sub.label} (${sub.fileName})", err)
         }
     }
 
@@ -486,7 +496,9 @@ class PhimBudApiClient(private val context: Context) {
             val req = Request.Builder()
                 .url("https://phimbud.com/_app/remote/$hash/setPlaytime")
                 .post(body)
-                .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
+                .header("Origin", "https://phimbud.com")
+                .header("Referer", "https://phimbud.com/watch/$fid")
+                .header("x-sveltekit-pathname", "/watch/$fid")
                 .build()
 
             okHttpClient.newCall(req).execute()
@@ -502,7 +514,9 @@ class PhimBudApiClient(private val context: Context) {
             val req = Request.Builder()
                 .url("https://phimbud.com/_app/remote/$hash/updateCollection")
                 .post(body)
-                .apply { baseHeaders.forEach { (k, v) -> addHeader(k, v) } }
+                .header("Origin", "https://phimbud.com")
+                .header("Referer", "https://phimbud.com/title/$fid")
+                .header("x-sveltekit-pathname", "/title/$fid")
                 .build()
 
             okHttpClient.newCall(req).execute()

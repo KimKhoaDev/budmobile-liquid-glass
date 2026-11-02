@@ -54,7 +54,10 @@ object SubtitleCipher {
         cipher.init(Cipher.DECRYPT_MODE, secretKey, parameterSpec)
 
         val decryptedBytes = cipher.doFinal(ciphertext)
-        val rawText = String(decryptedBytes, Charsets.UTF_8)
+        var rawText = String(decryptedBytes, Charsets.UTF_8)
+        if (rawText.startsWith("\uFEFF")) {
+            rawText = rawText.substring(1)
+        }
         return cleanSubtitle(rawText)
     }
 

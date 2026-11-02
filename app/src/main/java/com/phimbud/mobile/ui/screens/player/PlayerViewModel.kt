@@ -63,16 +63,23 @@ class PlayerViewModel(
 
             // Fetch subtitles
             val subsRes = repository.getSubtitles(fid)
-            val subs = subsRes.getOrDefault(emptyList())
+            val rawSubs = subsRes.getOrDefault(emptyList())
+
+            // Always prioritize Vietnamese subtitles first, then default, then by label
+            val subs = rawSubs.sortedWith(
+                compareByDescending<Subtitle> { it.language.startsWith("vi", ignoreCase = true) }
+                    .thenByDescending { it.isDefault }
+                    .thenBy { it.label }
+            )
 
             // Default to Vietnamese subtitle
-            val defaultSub = subs.firstOrNull { it.language.startsWith("vi") }
+            val defaultSub = subs.firstOrNull { it.language.startsWith("vi", ignoreCase = true) }
                 ?: subs.firstOrNull { it.isDefault }
                 ?: subs.firstOrNull()
 
             var subFile: File? = null
             if (defaultSub != null) {
-                subFile = repository.downloadSubtitle(defaultSub).getOrNull()
+                subFile = repository.downloadSubtitle(defaultSub, fid).getOrNull()
             }
 
             _uiState.value = PlayerUiState.Ready(
@@ -99,7 +106,7 @@ class PlayerViewModel(
         }
 
         viewModelScope.launch {
-            val fileRes = repository.downloadSubtitle(subtitle)
+            val fileRes = repository.downloadSubtitle(subtitle, watchFid)
             val file = fileRes.getOrNull()
             _uiState.value = current.copy(
                 activeSubtitle = subtitle,

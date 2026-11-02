@@ -73,8 +73,8 @@ class PhimBudRepository(context: Context) {
         return apiClient.getSubtitles(watchFid)
     }
 
-    suspend fun downloadSubtitle(sub: Subtitle): Result<File> {
-        return apiClient.downloadDecryptedSubtitle(sub)
+    suspend fun downloadSubtitle(sub: Subtitle, watchFid: String = ""): Result<File> {
+        return apiClient.downloadDecryptedSubtitle(sub, watchFid)
     }
 
     suspend fun searchTitles(query: String): List<SearchItem> {
