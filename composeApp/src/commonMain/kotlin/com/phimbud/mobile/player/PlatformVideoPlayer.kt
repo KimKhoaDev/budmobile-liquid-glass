@@ -16,6 +16,7 @@ enum class VideoResizeMode {
 interface PlatformPlayerController {
     val isPlaying: Boolean
     val isBuffering: Boolean
+    val isPlaybackEnded: Boolean
     val playbackError: String?
     val durationMs: Long
     val isInPipMode: Boolean

@@ -174,7 +174,12 @@ fun PlayerScreen(
     LaunchedEffect(uiState) {
         val ready = uiState as? PlayerUiState.Ready ?: return@LaunchedEffect
         val knownDurationMs = (ready.watchInfo.durationSeconds * 1000.0).toLong().coerceAtLeast(0L)
-        val resumePosMs = ready.watchInfo.lastCurrentTime?.times(1000L) ?: 0L
+        val rawResumePosMs = ready.watchInfo.lastCurrentTime?.times(1000L) ?: 0L
+        val resumePosMs = if (knownDurationMs > 30_000L && rawResumePosMs >= knownDurationMs - 15_000L) {
+            0L
+        } else {
+            rawResumePosMs
+        }
         val activeLang = ready.activeSubtitle?.language ?: "vi"
         controller.loadOrUpdateMedia(
             fid = ready.watchInfo.fid,
@@ -192,6 +197,35 @@ fun PlayerScreen(
             it.watchInfo.showFid.isNotBlank() ||
             it.episodes.isNotEmpty()
     } == true
+
+    val resolvedNextEpisodeFid = remember(readyState) {
+        val directNext = readyState?.watchInfo?.nextTitleFid?.takeIf { it.isNotBlank() }
+        if (directNext != null) {
+            directNext
+        } else {
+            readyState?.let { state ->
+                val currentEpNum = state.watchInfo.episodeNumber
+                val isCurrentSeason = state.selectedSeason == null ||
+                    state.selectedSeason.fid == state.watchInfo.seasonFid ||
+                    state.selectedSeason.number == state.watchInfo.seasonNumber
+                if (isCurrentSeason) {
+                    state.episodes.firstOrNull { it.number == currentEpNum + 1 }?.fid
+                } else {
+                    null
+                }
+            }
+        }
+    }
+
+    // Automatically advance to the next episode when the current episode finishes
+    LaunchedEffect(controller.isPlaybackEnded, readyState?.watchInfo?.fid, resolvedNextEpisodeFid) {
+        if (controller.isPlaybackEnded && readyState != null && !resolvedNextEpisodeFid.isNullOrBlank()) {
+            showEpisodesOverlay = false
+            val finishedDurSec = (controller.durationMs.takeIf { it > 0L }
+                ?: (readyState.watchInfo.durationSeconds * 1000.0).toLong().coerceAtLeast(0L)) / 1000L
+            viewModel.playNextEpisode(resolvedNextEpisodeFid, finishedDurSec)
+        }
+    }
 
     Box(
         modifier = modifier
@@ -504,7 +538,7 @@ fun PlayerScreen(
                         isPlaying = controller.isPlaying,
                         controlsVisible = controlsVisible,
                         knownDuration = knownDurMs.coerceAtLeast(controller.durationMs),
-                        nextTitleFid = readyState?.watchInfo?.nextTitleFid,
+                        nextTitleFid = resolvedNextEpisodeFid,
                         hasEpisodesList = hasEpisodesList,
                         skipSegments = readyState?.skipSegments ?: emptyList(),
                         onScrubActivity = { controlsInteractionTick++ },

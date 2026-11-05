@@ -45,6 +45,7 @@ import platform.AVFoundation.AVLayerVideoGravityResizeAspect
 import platform.AVFoundation.AVLayerVideoGravityResizeAspectFill
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
+import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
 import platform.AVFoundation.AVPlayerItemStatusFailed
 import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
 import platform.AVFoundation.AVPlayerItemStatusUnknown
@@ -89,6 +90,7 @@ internal class IosAvPlayerController(
 
     override var isPlaying by mutableStateOf(false)
     override var isBuffering by mutableStateOf(false)
+    override var isPlaybackEnded by mutableStateOf(false)
     override var playbackError by mutableStateOf<String?>(null)
     override var durationMs by mutableLongStateOf(0L)
     override val isInPipMode: Boolean = false
@@ -113,6 +115,10 @@ internal class IosAvPlayerController(
     }
 
     override fun play() {
+        if (isPlaybackEnded) {
+            isPlaybackEnded = false
+            seekTo(0L)
+        }
         wantToPlay = true
         avPlayer.play()
     }
@@ -123,8 +129,12 @@ internal class IosAvPlayerController(
     }
 
     override fun seekTo(positionMs: Long) {
-        val targetSec = positionMs.coerceAtLeast(0L) / 1000.0
-        livePositionMs = positionMs.coerceAtLeast(0L)
+        val targetMs = positionMs.coerceAtLeast(0L)
+        if (durationMs <= 0L || targetMs < durationMs - 2_000L) {
+            isPlaybackEnded = false
+        }
+        val targetSec = targetMs / 1000.0
+        livePositionMs = targetMs
         avPlayer.seekToTime(CMTimeMakeWithSeconds(targetSec, preferredTimescale = 1000))
     }
 
@@ -132,6 +142,7 @@ internal class IosAvPlayerController(
         val fid = currentLoadedFid ?: return
         val url = currentLoadedUrl ?: return
         val pos = currentPositionMs()
+        isPlaybackEnded = false
         currentLoadedUrl = null
         loadOrUpdateMedia(
             fid = fid,
@@ -166,6 +177,7 @@ internal class IosAvPlayerController(
         playbackError = null
         isBuffering = true
         if (isNewEpisode) {
+            isPlaybackEnded = false
             durationMs = knownDurationMs
             livePositionMs = targetResumeMs.coerceAtLeast(0L)
         }
@@ -190,6 +202,13 @@ internal class IosAvPlayerController(
                 playbackError = "Không thể khởi tạo trình phát iOS (${err.message ?: "lỗi mạng"})."
             }
         }
+    }
+
+    fun markPlaybackEnded() {
+        isPlaying = false
+        isBuffering = false
+        wantToPlay = false
+        isPlaybackEnded = true
     }
 
     fun syncStateTick() {
@@ -240,6 +259,14 @@ internal class IosAvPlayerController(
             if (!curSec.isNaN() && curSec.isFinite() && curSec >= 0.0) {
                 livePositionMs = (curSec * 1000.0).toLong()
             }
+
+            if (!isPlaybackEnded &&
+                status == AVPlayerTimeControlStatusPaused &&
+                durationMs > 10_000L &&
+                livePositionMs >= durationMs - 600L
+            ) {
+                markPlaybackEnded()
+            }
         }
     }
 
@@ -274,7 +301,7 @@ actual fun rememberPlatformPlayerController(
         }
     }
 
-    // Pause video when app enters background or iPhone screen is locked
+    // Pause video when app enters background or iPhone screen is locked, and observe end of item
     DisposableEffect(controller) {
         val center = NSNotificationCenter.defaultCenter
         val bgObserver = center.addObserverForName(
@@ -291,10 +318,21 @@ actual fun rememberPlatformPlayerController(
         ) { _ ->
             controller.pause()
         }
+        val endObserver = center.addObserverForName(
+            name = AVPlayerItemDidPlayToEndTimeNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue
+        ) { notification ->
+            val currentItem = controller.avPlayer.currentItem
+            if (currentItem != null && notification?.`object` == currentItem) {
+                controller.markPlaybackEnded()
+            }
+        }
 
         onDispose {
             center.removeObserver(bgObserver)
             center.removeObserver(resignObserver)
+            center.removeObserver(endObserver)
             controller.release()
         }
     }

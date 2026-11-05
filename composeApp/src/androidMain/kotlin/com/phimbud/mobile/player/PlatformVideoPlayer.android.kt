@@ -49,6 +49,7 @@ internal class AndroidExoPlayerController(
 
     override var isPlaying by mutableStateOf(false)
     override var isBuffering by mutableStateOf(false)
+    override var isPlaybackEnded by mutableStateOf(false)
     override var playbackError by mutableStateOf<String?>(null)
     override var durationMs by mutableLongStateOf(0L)
     override var isInPipMode by mutableStateOf(initialInPipMode)
@@ -60,6 +61,10 @@ internal class AndroidExoPlayerController(
     override fun currentPositionMs(): Long = exoPlayer.currentPosition.coerceAtLeast(0L)
 
     override fun play() {
+        if (exoPlayer.playbackState == Player.STATE_ENDED) {
+            isPlaybackEnded = false
+            exoPlayer.seekTo(0L)
+        }
         exoPlayer.play()
     }
 
@@ -68,11 +73,16 @@ internal class AndroidExoPlayerController(
     }
 
     override fun seekTo(positionMs: Long) {
-        exoPlayer.seekTo(positionMs.coerceAtLeast(0L))
+        val target = positionMs.coerceAtLeast(0L)
+        if (durationMs <= 0L || target < durationMs - 2_000L) {
+            isPlaybackEnded = false
+        }
+        exoPlayer.seekTo(target)
     }
 
     override fun clearErrorAndRetry() {
         playbackError = null
+        isPlaybackEnded = false
         exoPlayer.prepare()
         exoPlayer.play()
     }
@@ -92,16 +102,14 @@ internal class AndroidExoPlayerController(
         val subFile = subtitle?.path?.let { File(it) }
 
         if (isNewEpisode) {
+            isPlaybackEnded = false
             val mediaSource = playerManager.buildMediaSource(
                 m3u8Url = m3u8Url,
                 subtitleFile = subFile,
                 language = subtitleLanguage
             )
             durationMs = knownDurationMs
-            exoPlayer.setMediaSource(mediaSource)
-            if (resumePositionMs > 0L) {
-                exoPlayer.seekTo(resumePositionMs)
-            }
+            exoPlayer.setMediaSource(mediaSource, resumePositionMs.coerceAtLeast(0L))
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
             currentLoadedSubPath = subtitle?.path
@@ -199,6 +207,7 @@ actual fun rememberPlatformPlayerController(
 
             override fun onPlaybackStateChanged(state: Int) {
                 controller.isBuffering = (state == Player.STATE_BUFFERING)
+                controller.isPlaybackEnded = (state == Player.STATE_ENDED)
                 if (state == Player.STATE_READY) {
                     controller.playbackError = null
                     val dur = exo.duration
