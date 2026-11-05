@@ -11,6 +11,7 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -26,7 +27,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -54,6 +54,8 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.phimbud.mobile.PhimBudApp
 import com.phimbud.mobile.player.PhimBudPlayerManager
+import com.phimbud.mobile.player.SkipSegment
+import com.phimbud.mobile.player.SkipSegmentType
 import com.phimbud.mobile.ui.theme.*
 import kotlinx.coroutines.delay
 import java.io.File
@@ -287,6 +289,9 @@ fun PlayerScreen(
         currentLoadedUrl = ready.m3u8Url
     }
 
+    val activeErrorMessage = (uiState as? PlayerUiState.Error)?.message ?: playbackError
+    val readyStateForSkip = uiState as? PlayerUiState.Ready
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -338,7 +343,6 @@ fun PlayerScreen(
         }
 
         // Error state overlay (handles both API errors and ExoPlayer HLS playback errors)
-        val activeErrorMessage = (uiState as? PlayerUiState.Error)?.message ?: playbackError
         if (activeErrorMessage != null && !isInPipMode) {
             Box(
                 modifier = Modifier
@@ -625,6 +629,7 @@ fun PlayerScreen(
                         controlsVisible = controlsVisible,
                         knownDuration = duration,
                         nextTitleFid = readyState?.watchInfo?.nextTitleFid,
+                        skipSegments = readyState?.skipSegments ?: emptyList(),
                         onScrubActivity = { controlsInteractionTick++ },
                         onNextEpisodeClick = { nextFid ->
                             val prevPosSec = exoPlayer.currentPosition / 1000
@@ -639,6 +644,23 @@ fun PlayerScreen(
                 }
             }
         }
+
+        // Netflix-style Floating Skip Intro / Skip Recap Overlay (appears automatically even when HUD is hidden)
+        FloatingSkipOverlay(
+            exoPlayer = exoPlayer,
+            isPlaying = isPlaying,
+            skipSegments = readyStateForSkip?.skipSegments ?: emptyList(),
+            controlsVisible = controlsVisible,
+            isLocked = isLocked,
+            isInPipMode = isInPipMode,
+            hasError = activeErrorMessage != null,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(
+                    end = 26.dp,
+                    bottom = if (controlsVisible && !isLocked) 96.dp else 28.dp
+                )
+        )
 
         // Subtitle Picker Dialog
         if (showSubtitleDialog && !isInPipMode) {
@@ -894,12 +916,125 @@ fun PlayerScreen(
 }
 
 @Composable
+private fun FloatingSkipOverlay(
+    exoPlayer: ExoPlayer,
+    isPlaying: Boolean,
+    skipSegments: List<SkipSegment>,
+    controlsVisible: Boolean,
+    isLocked: Boolean,
+    isInPipMode: Boolean,
+    hasError: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var activeSegment by remember(skipSegments) { mutableStateOf<SkipSegment?>(null) }
+    var lastPromptedSegment by remember(skipSegments) { mutableStateOf<SkipSegment?>(null) }
+    var isPromptVisible by remember { mutableStateOf(false) }
+    var promptTick by remember { mutableIntStateOf(0) }
+    var skippedSegment by remember(skipSegments) { mutableStateOf<SkipSegment?>(null) }
+
+    val maxSegmentEndMs = remember(skipSegments) {
+        skipSegments.maxOfOrNull { it.endMs } ?: 0L
+    }
+
+    // Poll current playback position to detect when entering/leaving segments
+    LaunchedEffect(skipSegments, isPlaying, controlsVisible, isLocked, isInPipMode, hasError) {
+        if (skipSegments.isEmpty() || isLocked || isInPipMode || hasError) {
+            activeSegment = null
+            isPromptVisible = false
+            return@LaunchedEffect
+        }
+
+        fun checkSegment() {
+            val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
+            val matching = skipSegments.firstOrNull { seg ->
+                pos in seg.startMs..(seg.endMs - 1_500L)
+            }
+            if (matching != activeSegment) {
+                activeSegment = matching
+                if (matching != null && matching != skippedSegment && matching != lastPromptedSegment) {
+                    lastPromptedSegment = matching
+                    isPromptVisible = true
+                    promptTick++
+                }
+            }
+        }
+
+        checkSegment()
+        while (isPlaying && exoPlayer.currentPosition <= maxSegmentEndMs + 5_000L) {
+            delay(200L)
+            checkSegment()
+        }
+        if (exoPlayer.currentPosition > maxSegmentEndMs) {
+            activeSegment = null
+            isPromptVisible = false
+        }
+    }
+
+    // 10-second auto-dismiss timer so the prompt is easy to catch without staying forever
+    LaunchedEffect(promptTick, isPlaying) {
+        if (isPromptVisible && isPlaying) {
+            delay(10_000L)
+            isPromptVisible = false
+        }
+    }
+
+    val currentSeg = activeSegment
+    val shouldShow = currentSeg != null &&
+        currentSeg != skippedSegment &&
+        (isPromptVisible || controlsVisible) &&
+        !isLocked &&
+        !isInPipMode &&
+        !hasError
+
+    AnimatedVisibility(
+        visible = shouldShow,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier
+    ) {
+        if (currentSeg != null) {
+            Surface(
+                onClick = {
+                    skippedSegment = currentSeg
+                    isPromptVisible = false
+                    exoPlayer.seekTo(currentSeg.endMs)
+                    activeSegment = null
+                },
+                color = Color.Black.copy(alpha = 0.82f),
+                border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.92f)),
+                shape = RoundedCornerShape(6.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = currentSeg.label,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = currentSeg.label,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun PlayerBottomBar(
     exoPlayer: ExoPlayer,
     isPlaying: Boolean,
     controlsVisible: Boolean,
     knownDuration: Long,
     nextTitleFid: String?,
+    skipSegments: List<SkipSegment>,
     onScrubActivity: () -> Unit,
     onNextEpisodeClick: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -909,6 +1044,7 @@ private fun PlayerBottomBar(
         mutableLongStateOf(knownDuration.coerceAtLeast(exoPlayer.duration.coerceAtLeast(0L)))
     }
     var isScrubbing by remember { mutableStateOf(false) }
+    var hasManuallySkipped by remember(exoPlayer) { mutableStateOf(false) }
 
     // Only poll playback position when controls are actually visible!
     LaunchedEffect(isPlaying, controlsVisible) {
@@ -930,6 +1066,13 @@ private fun PlayerBottomBar(
         }
     }
 
+    // Only show manual backup skip if NO auto-detected Intro exists, hasn't been clicked yet, and within first 90s
+    val hasAutoIntro = skipSegments.any { it.type == SkipSegmentType.INTRO }
+    val showQuickSkip85s = !hasAutoIntro &&
+        !hasManuallySkipped &&
+        currentPosition in 0L..90_000L &&
+        duration > 180_000L
+
     Column(modifier = modifier) {
         Row(
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -942,16 +1085,54 @@ private fun PlayerBottomBar(
                 fontSize = 13.sp
             )
 
-            if (!nextTitleFid.isNullOrBlank()) {
-                TextButton(
-                    onClick = { onNextEpisodeClick(nextTitleFid) }
-                ) {
-                    Text(
-                        text = "Tập tiếp theo ▶",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (showQuickSkip85s) {
+                    Surface(
+                        onClick = {
+                            hasManuallySkipped = true
+                            onScrubActivity()
+                            val targetPos = (currentPosition + 85_000L).coerceAtMost(duration)
+                            exoPlayer.seekTo(targetPos)
+                            currentPosition = targetPos
+                        },
+                        color = Color.White.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FastForward,
+                                contentDescription = "Bỏ qua Mở đầu (+85s)",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Bỏ qua Mở đầu (+85s)",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+
+                if (!nextTitleFid.isNullOrBlank()) {
+                    TextButton(
+                        onClick = { onNextEpisodeClick(nextTitleFid) }
+                    ) {
+                        Text(
+                            text = "Tập tiếp theo ▶",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
                 }
             }
         }

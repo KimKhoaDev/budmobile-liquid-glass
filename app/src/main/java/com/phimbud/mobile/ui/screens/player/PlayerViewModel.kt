@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.phimbud.mobile.core.model.Subtitle
 import com.phimbud.mobile.core.model.WatchInfo
 import com.phimbud.mobile.core.repository.PhimBudRepository
+import com.phimbud.mobile.player.IntroRecapDetector
+import com.phimbud.mobile.player.SkipSegment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 sealed class PlayerUiState {
@@ -27,7 +30,8 @@ sealed class PlayerUiState {
         val currentServer: String,
         val subtitles: List<Subtitle>,
         val activeSubtitle: Subtitle?,
-        val activeSubtitleFile: File?
+        val activeSubtitleFile: File?,
+        val skipSegments: List<SkipSegment> = emptyList()
     ) : PlayerUiState()
     data class Error(val message: String) : PlayerUiState()
 }
@@ -87,8 +91,15 @@ class PlayerViewModel(
                     ?: subs.firstOrNull()
 
                 var subFile: File? = null
+                var detectedSkipSegments: List<SkipSegment> = emptyList()
+                val isEpisode = watchInfo.showFid.isNotBlank() || watchInfo.nextTitleFid != null
                 if (defaultSub != null) {
                     subFile = repository.downloadSubtitle(defaultSub, fid).getOrNull()
+                    if (subFile != null) {
+                        detectedSkipSegments = withContext(Dispatchers.Default) {
+                            IntroRecapDetector.detectFromFile(subFile, isEpisode = isEpisode)
+                        }
+                    }
                 }
 
                 _uiState.value = PlayerUiState.Ready(
@@ -97,7 +108,8 @@ class PlayerViewModel(
                     currentServer = server,
                     subtitles = subs,
                     activeSubtitle = defaultSub,
-                    activeSubtitleFile = subFile
+                    activeSubtitleFile = subFile,
+                    skipSegments = detectedSkipSegments
                 )
             }
         }
@@ -129,10 +141,16 @@ class PlayerViewModel(
         viewModelScope.launch {
             val file = repository.downloadSubtitle(subtitle, targetFid).getOrNull() ?: return@launch
             val latest = _uiState.value as? PlayerUiState.Ready ?: return@launch
+            val isEpisode = latest.watchInfo.showFid.isNotBlank() || latest.watchInfo.nextTitleFid != null
+            val detectedSegments = withContext(Dispatchers.Default) {
+                IntroRecapDetector.detectFromFile(file, isEpisode = isEpisode)
+            }
+            val latestAfterParse = _uiState.value as? PlayerUiState.Ready ?: return@launch
             if (watchFid == targetFid) {
-                _uiState.value = latest.copy(
+                _uiState.value = latestAfterParse.copy(
                     activeSubtitle = subtitle,
-                    activeSubtitleFile = file
+                    activeSubtitleFile = file,
+                    skipSegments = detectedSegments.ifEmpty { latestAfterParse.skipSegments }
                 )
             }
         }
