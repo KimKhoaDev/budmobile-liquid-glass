@@ -2,12 +2,14 @@
 .gradle/
 build/
 .kotlin/
+composeApp/build/
 
 # Local configuration file (sdk path, etc)
 local.properties
 
 # Log/OS Files
 *.log
+.DS_Store
 
 # Android Studio generated files and folders
 captures/
@@ -15,7 +17,16 @@ captures/
 .cxx/
 *.aab
 *.apk
+*.ipa
 output-metadata.json
+
+# Xcode / iOS generated files
+iosApp/build/
+iosApp/DerivedData/
+iosApp/Pods/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
 
 # IntelliJ
 *.iml
