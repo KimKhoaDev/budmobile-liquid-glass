@@ -6,22 +6,12 @@ on:
       - main
       - master
   workflow_dispatch:
-    inputs:
-      runner:
-        description: 'Chon may chu macOS (macos-15-intel it bi nghen hang doi nhat)'
-        required: false
-        default: 'macos-15-intel'
-        type: choice
-        options:
-          - macos-15-intel
-          - macos-15
-          - macos-latest
 
 jobs:
   build-ios-ipa:
     name: Build Unsigned PhimBud.ipa on macOS
-    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
-    timeout-minutes: 60
+    runs-on: macos-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -37,7 +27,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.konan
-          key: ${{ runner.os }}-${{ runner.arch }}-konan-2.1.10
+          key: ${{ runner.os }}-konan-2.1.10
 
       - name: Setup Gradle with caching
         uses: gradle/actions/setup-gradle@v4
