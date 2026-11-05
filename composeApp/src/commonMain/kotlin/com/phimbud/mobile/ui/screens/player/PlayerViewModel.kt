@@ -2,13 +2,17 @@ package com.phimbud.mobile.ui.screens.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.phimbud.mobile.core.model.Episode
+import com.phimbud.mobile.core.model.Season
 import com.phimbud.mobile.core.model.Subtitle
+import com.phimbud.mobile.core.model.TitleDetail
 import com.phimbud.mobile.core.model.WatchInfo
 import com.phimbud.mobile.core.platform.CachedSubtitle
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import com.phimbud.mobile.player.IntroRecapDetector
 import com.phimbud.mobile.player.SkipSegment
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
@@ -32,7 +36,11 @@ sealed class PlayerUiState {
         val subtitles: List<Subtitle>,
         val activeSubtitle: Subtitle?,
         val activeSubtitleData: CachedSubtitle?,
-        val skipSegments: List<SkipSegment> = emptyList()
+        val skipSegments: List<SkipSegment> = emptyList(),
+        val seasons: List<Season> = emptyList(),
+        val selectedSeason: Season? = null,
+        val episodes: List<Episode> = emptyList(),
+        val isEpisodesLoading: Boolean = false
     ) : PlayerUiState()
     data class Error(val message: String) : PlayerUiState()
 }
@@ -46,6 +54,7 @@ class PlayerViewModel(
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     private var loadJob: Job? = null
+    private var episodesJob: Job? = null
     private var syncJob: Job? = null
     var currentServer: String = "1"
 
@@ -54,6 +63,7 @@ class PlayerViewModel(
     }
 
     fun loadStream(fid: String, server: String = currentServer) {
+        val previousReady = _uiState.value as? PlayerUiState.Ready
         watchFid = fid
         currentServer = server
 
@@ -91,7 +101,7 @@ class PlayerViewModel(
 
                 var subData: CachedSubtitle? = null
                 var detectedSkipSegments: List<SkipSegment> = emptyList()
-                val isEpisode = watchInfo.showFid.isNotBlank() || watchInfo.nextTitleFid != null
+                val isEpisode = watchInfo.showFid.isNotBlank() || watchInfo.seasonFid.isNotBlank() || watchInfo.nextTitleFid != null
                 if (defaultSub != null) {
                     subData = repository.downloadSubtitle(defaultSub, fid).getOrNull()
                     if (subData != null) {
@@ -101,6 +111,26 @@ class PlayerViewModel(
                     }
                 }
 
+                // Reuse already-loaded seasons/episodes if switching episodes within the same show/season
+                val sameShow = previousReady != null &&
+                    watchInfo.showFid.isNotBlank() &&
+                    previousReady.watchInfo.showFid == watchInfo.showFid
+                val sameSeason = sameShow &&
+                    watchInfo.seasonFid.isNotBlank() &&
+                    previousReady?.selectedSeason?.fid == watchInfo.seasonFid &&
+                    previousReady.episodes.isNotEmpty()
+
+                val initialSeasons = if (sameShow) previousReady?.seasons.orEmpty() else emptyList()
+                val initialSelectedSeason = if (sameSeason) {
+                    previousReady?.selectedSeason
+                } else if (watchInfo.seasonFid.isNotBlank()) {
+                    initialSeasons.firstOrNull { it.fid == watchInfo.seasonFid }
+                        ?: Season(fid = watchInfo.seasonFid, number = watchInfo.seasonNumber)
+                } else {
+                    null
+                }
+                val initialEpisodes = if (sameSeason) previousReady?.episodes.orEmpty() else emptyList()
+
                 _uiState.value = PlayerUiState.Ready(
                     watchInfo = watchInfo,
                     m3u8Url = m3u8Url,
@@ -108,7 +138,85 @@ class PlayerViewModel(
                     subtitles = subs,
                     activeSubtitle = defaultSub,
                     activeSubtitleData = subData,
-                    skipSegments = detectedSkipSegments
+                    skipSegments = detectedSkipSegments,
+                    seasons = initialSeasons,
+                    selectedSeason = initialSelectedSeason,
+                    episodes = initialEpisodes,
+                    isEpisodesLoading = isEpisode && initialEpisodes.isEmpty()
+                )
+
+                if (isEpisode && !sameSeason) {
+                    loadShowSeasonsAndEpisodes(watchInfo)
+                }
+            }
+        }
+    }
+
+    private fun loadShowSeasonsAndEpisodes(watchInfo: WatchInfo) {
+        episodesJob?.cancel()
+        episodesJob = viewModelScope.launch {
+            coroutineScope {
+                val detailDeferred: Deferred<TitleDetail?>? = if (watchInfo.showFid.isNotBlank()) {
+                    async { repository.getTitleDetail(watchInfo.showFid).getOrNull() }
+                } else {
+                    null
+                }
+                val directEpisodesDeferred: Deferred<List<Episode>>? = if (watchInfo.seasonFid.isNotBlank()) {
+                    async { repository.getSeasonEpisodes(watchInfo.seasonFid).getOrDefault(emptyList()) }
+                } else {
+                    null
+                }
+
+                val detail = detailDeferred?.await()
+                val resolvedSeasons = detail?.seasons?.takeIf { it.isNotEmpty() }
+                    ?: if (watchInfo.seasonFid.isNotBlank()) {
+                        listOf(Season(fid = watchInfo.seasonFid, number = watchInfo.seasonNumber))
+                    } else {
+                        emptyList()
+                    }
+
+                val targetSeason = resolvedSeasons.firstOrNull { it.fid == watchInfo.seasonFid }
+                    ?: resolvedSeasons.firstOrNull { it.number == watchInfo.seasonNumber }
+                    ?: resolvedSeasons.firstOrNull()
+
+                val resolvedEpisodes = when {
+                    directEpisodesDeferred != null && (targetSeason == null || targetSeason.fid == watchInfo.seasonFid) -> {
+                        directEpisodesDeferred.await()
+                    }
+                    targetSeason != null -> {
+                        repository.getSeasonEpisodes(targetSeason.fid).getOrDefault(emptyList())
+                    }
+                    else -> emptyList()
+                }
+
+                val current = _uiState.value as? PlayerUiState.Ready ?: return@coroutineScope
+                if (current.watchInfo.fid == watchInfo.fid) {
+                    _uiState.value = current.copy(
+                        seasons = resolvedSeasons,
+                        selectedSeason = targetSeason,
+                        episodes = resolvedEpisodes,
+                        isEpisodesLoading = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectSeason(season: Season) {
+        val current = _uiState.value as? PlayerUiState.Ready ?: return
+        if (current.selectedSeason?.fid == season.fid && current.episodes.isNotEmpty()) return
+        _uiState.value = current.copy(
+            selectedSeason = season,
+            isEpisodesLoading = true
+        )
+        episodesJob?.cancel()
+        episodesJob = viewModelScope.launch {
+            val eps = repository.getSeasonEpisodes(season.fid).getOrDefault(emptyList())
+            val latest = _uiState.value as? PlayerUiState.Ready ?: return@launch
+            if (latest.selectedSeason?.fid == season.fid) {
+                _uiState.value = latest.copy(
+                    episodes = eps,
+                    isEpisodesLoading = false
                 )
             }
         }
@@ -140,7 +248,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             val subData = repository.downloadSubtitle(subtitle, targetFid).getOrNull() ?: return@launch
             val latest = _uiState.value as? PlayerUiState.Ready ?: return@launch
-            val isEpisode = latest.watchInfo.showFid.isNotBlank() || latest.watchInfo.nextTitleFid != null
+            val isEpisode = latest.watchInfo.showFid.isNotBlank() || latest.watchInfo.seasonFid.isNotBlank() || latest.watchInfo.nextTitleFid != null
             val detectedSegments = withContext(Dispatchers.Default) {
                 IntroRecapDetector.detectFromSrt(subData.content, isEpisode = isEpisode)
             }
@@ -184,6 +292,7 @@ class PlayerViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        episodesJob?.cancel()
         syncJob?.cancel()
     }
 }

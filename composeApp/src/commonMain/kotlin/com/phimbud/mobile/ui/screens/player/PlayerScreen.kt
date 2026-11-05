@@ -3,13 +3,17 @@ package com.phimbud.mobile.ui.screens.player
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.displayCutoutPadding
@@ -20,6 +24,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Forward10
@@ -39,11 +48,14 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SubtitlesOff
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,12 +77,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
+import com.phimbud.mobile.core.model.Episode
+import com.phimbud.mobile.core.model.Season
+import com.phimbud.mobile.core.model.WatchInfo
+import com.phimbud.mobile.core.platform.PlatformBackHandler
 import com.phimbud.mobile.core.platform.formatPlaybackTime
 import com.phimbud.mobile.player.PlatformPlayerController
 import com.phimbud.mobile.player.PlatformPlayerWindowEffect
@@ -80,8 +99,11 @@ import com.phimbud.mobile.player.SkipSegmentType
 import com.phimbud.mobile.player.VideoResizeMode
 import com.phimbud.mobile.player.rememberPlatformPlayerController
 import com.phimbud.mobile.ui.theme.NetflixBlack
+import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixDarkGray
 import com.phimbud.mobile.ui.theme.NetflixRed
+import com.phimbud.mobile.ui.theme.NetflixTextPrimary
+import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 import kotlinx.coroutines.delay
 
 @Composable
@@ -99,10 +121,15 @@ fun PlayerScreen(
     var resizeMode by remember { mutableStateOf(VideoResizeMode.FIT) }
     var showSubtitleDialog by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
+    var showEpisodesOverlay by remember { mutableStateOf(false) }
+
+    PlatformBackHandler(enabled = showEpisodesOverlay) {
+        showEpisodesOverlay = false
+    }
 
     PlatformPlayerWindowEffect(
         showSubtitleDialog = showSubtitleDialog,
-        showServerDialog = showServerDialog,
+        showServerDialog = showServerDialog || showEpisodesOverlay,
         controlsVisible = controlsVisible
     )
 
@@ -110,6 +137,7 @@ fun PlayerScreen(
     LaunchedEffect(isInPipMode) {
         if (isInPipMode) {
             controlsVisible = false
+            showEpisodesOverlay = false
         }
     }
 
@@ -121,16 +149,22 @@ fun PlayerScreen(
         }
     }
 
-    // Auto-hide HUD timer (pauses while dialogs are open)
+    // Auto-hide HUD timer (pauses while dialogs or episode overlay are open)
     LaunchedEffect(
         controlsVisible,
         controller.isPlaying,
         isLocked,
         showSubtitleDialog,
         showServerDialog,
+        showEpisodesOverlay,
         controlsInteractionTick
     ) {
-        if (controlsVisible && !showSubtitleDialog && !showServerDialog && (controller.isPlaying || isLocked)) {
+        if (controlsVisible &&
+            !showSubtitleDialog &&
+            !showServerDialog &&
+            !showEpisodesOverlay &&
+            (controller.isPlaying || isLocked)
+        ) {
             delay(if (isLocked) 2800L else 4000L)
             controlsVisible = false
         }
@@ -153,6 +187,11 @@ fun PlayerScreen(
     }
 
     val readyState = uiState as? PlayerUiState.Ready
+    val hasEpisodesList = readyState?.let {
+        it.watchInfo.seasonFid.isNotBlank() ||
+            it.watchInfo.showFid.isNotBlank() ||
+            it.episodes.isNotEmpty()
+    } == true
 
     Box(
         modifier = modifier
@@ -162,7 +201,11 @@ fun PlayerScreen(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
-                controlsVisible = !controlsVisible
+                if (showEpisodesOverlay) {
+                    showEpisodesOverlay = false
+                } else {
+                    controlsVisible = !controlsVisible
+                }
             }
     ) {
         // Native Video Surface (ExoPlayer on Android, AVPlayer + Subtitle Overlay on iOS)
@@ -170,7 +213,7 @@ fun PlayerScreen(
             controller = controller,
             resizeMode = resizeMode,
             activeSubtitle = readyState?.activeSubtitleData,
-            controlsVisible = controlsVisible,
+            controlsVisible = controlsVisible && !showEpisodesOverlay,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -232,7 +275,7 @@ fun PlayerScreen(
 
         // Overlay Controls
         AnimatedVisibility(
-            visible = controlsVisible && !isInPipMode && activeErrorMessage == null,
+            visible = controlsVisible && !showEpisodesOverlay && !isInPipMode && activeErrorMessage == null,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
@@ -462,8 +505,13 @@ fun PlayerScreen(
                         controlsVisible = controlsVisible,
                         knownDuration = knownDurMs.coerceAtLeast(controller.durationMs),
                         nextTitleFid = readyState?.watchInfo?.nextTitleFid,
+                        hasEpisodesList = hasEpisodesList,
                         skipSegments = readyState?.skipSegments ?: emptyList(),
                         onScrubActivity = { controlsInteractionTick++ },
+                        onOpenEpisodesClick = {
+                            controlsInteractionTick++
+                            showEpisodesOverlay = true
+                        },
                         onNextEpisodeClick = { nextFid ->
                             val prevPosSec = controller.currentPositionMs() / 1000L
                             controller.pause()
@@ -484,7 +532,7 @@ fun PlayerScreen(
             isPlaying = controller.isPlaying,
             skipSegments = readyState?.skipSegments ?: emptyList(),
             controlsVisible = controlsVisible,
-            isLocked = isLocked,
+            isLocked = isLocked || showEpisodesOverlay,
             isInPipMode = isInPipMode,
             hasError = activeErrorMessage != null,
             modifier = Modifier
@@ -495,6 +543,40 @@ fun PlayerScreen(
                     bottom = if (controlsVisible && !isLocked) 96.dp else 28.dp
                 )
         )
+
+        // Netflix-style In-Player Episode List Overlay
+        AnimatedVisibility(
+            visible = showEpisodesOverlay && readyState != null && !isInPipMode,
+            enter = fadeIn() + slideInHorizontally { it / 4 },
+            exit = fadeOut() + slideOutHorizontally { it / 4 },
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (readyState != null) {
+                PlayerEpisodesOverlay(
+                    watchInfo = readyState.watchInfo,
+                    seasons = readyState.seasons,
+                    selectedSeason = readyState.selectedSeason,
+                    episodes = readyState.episodes,
+                    isLoading = readyState.isEpisodesLoading,
+                    onSeasonSelected = { season ->
+                        viewModel.selectSeason(season)
+                    },
+                    onEpisodeSelected = { episode ->
+                        showEpisodesOverlay = false
+                        if (episode.fid != readyState.watchInfo.fid) {
+                            val prevPosSec = controller.currentPositionMs() / 1000L
+                            controller.pause()
+                            viewModel.playNextEpisode(episode.fid, prevPosSec)
+                        }
+                    },
+                    onDismiss = {
+                        showEpisodesOverlay = false
+                        controlsVisible = true
+                        controlsInteractionTick++
+                    }
+                )
+            }
+        }
 
         // Subtitle Picker Dialog
         if (showSubtitleDialog && !isInPipMode) {
@@ -746,6 +828,288 @@ fun PlayerScreen(
 }
 
 @Composable
+private fun PlayerEpisodesOverlay(
+    watchInfo: WatchInfo,
+    seasons: List<Season>,
+    selectedSeason: Season?,
+    episodes: List<Episode>,
+    isLoading: Boolean,
+    onSeasonSelected: (Season) -> Unit,
+    onEpisodeSelected: (Episode) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val activeEpisodeIndex = remember(episodes, watchInfo.fid, watchInfo.episodeNumber, selectedSeason?.fid) {
+        val byFid = episodes.indexOfFirst { it.fid == watchInfo.fid }
+        if (byFid >= 0) {
+            byFid
+        } else if (selectedSeason == null || selectedSeason.fid == watchInfo.seasonFid || selectedSeason.number == watchInfo.seasonNumber) {
+            episodes.indexOfFirst { it.number == watchInfo.episodeNumber }.coerceAtLeast(0)
+        } else {
+            0
+        }
+    }
+
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = (activeEpisodeIndex - 1).coerceAtLeast(0)
+    )
+
+    LaunchedEffect(selectedSeason?.fid, episodes.size) {
+        if (episodes.isNotEmpty()) {
+            val targetIdx = (activeEpisodeIndex - 1).coerceAtLeast(0)
+            listState.scrollToItem(targetIdx)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.90f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                // Consume background clicks so they don't toggle underlying HUD
+            }
+            .displayCutoutPadding()
+            .padding(horizontal = 24.dp, vertical = 14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header: Show Title + Season Chips + Close Button
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = watchInfo.displayShowTitle.ifBlank { "Danh sách tập phim" },
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Đang phát: Mùa ${watchInfo.seasonNumber} • Tập ${watchInfo.episodeNumber}",
+                        color = NetflixRed,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                if (seasons.size > 1) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier.weight(1.2f, fill = false)
+                    ) {
+                        items(
+                            items = seasons,
+                            key = { it.fid }
+                        ) { season ->
+                            val isSelected = selectedSeason?.fid == season.fid
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onSeasonSelected(season) },
+                                label = {
+                                    Text(
+                                        text = "Mùa ${season.number}",
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = NetflixRed,
+                                    selectedLabelColor = Color.White,
+                                    containerColor = NetflixCard,
+                                    labelColor = NetflixTextSecondary
+                                )
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    onClick = onDismiss,
+                    color = Color.White.copy(alpha = 0.14f),
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Đóng danh sách tập",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(22.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.12f), thickness = 0.8.dp)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            when {
+                isLoading && episodes.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = NetflixRed, modifier = Modifier.size(40.dp))
+                    }
+                }
+                episodes.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Không tìm thấy danh sách tập phim",
+                            color = NetflixTextSecondary,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+                else -> {
+                    LazyColumn(
+                        state = listState,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = 12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        items(
+                            items = episodes,
+                            key = { it.fid }
+                        ) { episode ->
+                            val isCurrentSeason = selectedSeason == null ||
+                                selectedSeason.fid == watchInfo.seasonFid ||
+                                selectedSeason.number == watchInfo.seasonNumber
+                            val isCurrentEpisode = episode.fid == watchInfo.fid ||
+                                (isCurrentSeason && episode.number == watchInfo.episodeNumber)
+
+                            PlayerEpisodeRow(
+                                episode = episode,
+                                isCurrentEpisode = isCurrentEpisode,
+                                onClick = { onEpisodeSelected(episode) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerEpisodeRow(
+    episode: Episode,
+    isCurrentEpisode: Boolean,
+    onClick: () -> Unit
+) {
+    val displayTitle = remember(episode.number, episode.name) {
+        if (episode.name.isBlank() || episode.name.equals("Tập ${episode.number}", ignoreCase = true)) {
+            "Tập ${episode.number}"
+        } else {
+            "Tập ${episode.number}: ${episode.name}"
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (isCurrentEpisode) NetflixRed.copy(alpha = 0.16f) else NetflixDarkGray.copy(alpha = 0.85f)
+            )
+            .then(
+                if (isCurrentEpisode) {
+                    Modifier.border(1.2.dp, NetflixRed.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        // Episode Thumbnail
+        Box(
+            modifier = Modifier
+                .width(120.dp)
+                .height(68.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(NetflixCard)
+        ) {
+            if (!episode.thumbnailUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = episode.thumbnailUrl,
+                    contentDescription = displayTitle,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = if (isCurrentEpisode) 0.45f else 0.25f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Phát",
+                    tint = if (isCurrentEpisode) NetflixRed else Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = displayTitle,
+                    color = if (isCurrentEpisode) Color.White else NetflixTextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = if (isCurrentEpisode) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (!episode.airDate.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = episode.airDate,
+                    color = NetflixTextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        }
+
+        if (isCurrentEpisode) {
+            Surface(
+                color = NetflixRed,
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = "Đang phát",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun FloatingSkipOverlay(
     controller: PlatformPlayerController,
     isPlaying: Boolean,
@@ -863,8 +1227,10 @@ private fun PlayerBottomBar(
     controlsVisible: Boolean,
     knownDuration: Long,
     nextTitleFid: String?,
+    hasEpisodesList: Boolean,
     skipSegments: List<SkipSegment>,
     onScrubActivity: () -> Unit,
+    onOpenEpisodesClick: () -> Unit,
     onNextEpisodeClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -951,16 +1317,57 @@ private fun PlayerBottomBar(
                     }
                 }
 
-                if (!nextTitleFid.isNullOrBlank()) {
-                    TextButton(
-                        onClick = { onNextEpisodeClick(nextTitleFid) }
+                if (hasEpisodesList) {
+                    Surface(
+                        onClick = onOpenEpisodesClick,
+                        color = Color.White.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(6.dp)
                     ) {
-                        Text(
-                            text = "Tập tiếp theo ▶",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.VideoLibrary,
+                                contentDescription = "Các tập phim",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Các tập",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+
+                if (!nextTitleFid.isNullOrBlank()) {
+                    Surface(
+                        onClick = { onNextEpisodeClick(nextTitleFid) },
+                        color = Color.White.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "Tập tiếp theo",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Tập tiếp theo",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
             }
