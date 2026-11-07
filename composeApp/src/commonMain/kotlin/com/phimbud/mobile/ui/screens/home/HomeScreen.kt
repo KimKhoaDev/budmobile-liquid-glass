@@ -47,6 +47,7 @@ import com.phimbud.mobile.core.model.HomeFilterMode
 import com.phimbud.mobile.core.model.Movie
 import com.phimbud.mobile.core.model.Top10CategoryFilter
 import com.phimbud.mobile.core.platform.PlatformBackHandler
+import com.phimbud.mobile.core.platform.platformHorizontalDragScroll
 import com.phimbud.mobile.ui.components.HeroBanner
 import com.phimbud.mobile.ui.components.MovieRow
 import com.phimbud.mobile.ui.components.Top10MovieRow
@@ -373,10 +374,12 @@ fun HomeScreen(
                     }
 
                     // Primary Filter Chips: Tất cả | Top 10 Việt Nam | Top 10 Thế Giới | Phim Bộ | Phim Lẻ
+                    val primaryPillsScroll = rememberScrollState()
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
+                            .horizontalScroll(primaryPillsScroll)
+                            .platformHorizontalDragScroll(primaryPillsScroll)
                             .padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -414,10 +417,12 @@ fun HomeScreen(
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
+                        val subCategoryScroll = rememberScrollState()
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
+                                .horizontalScroll(subCategoryScroll)
+                                .platformHorizontalDragScroll(subCategoryScroll)
                                 .padding(start = 16.dp, end = 16.dp, top = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically

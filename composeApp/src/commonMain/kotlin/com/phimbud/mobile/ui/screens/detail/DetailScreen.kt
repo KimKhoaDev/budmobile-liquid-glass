@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -58,7 +59,9 @@ import com.phimbud.mobile.core.model.BrowseFilterOptions
 import com.phimbud.mobile.core.model.Episode
 import com.phimbud.mobile.core.model.GenreTag
 import com.phimbud.mobile.core.model.Movie
+import com.phimbud.mobile.core.platform.PlatformBackHandler
 import com.phimbud.mobile.core.platform.formatOneDecimal
+import com.phimbud.mobile.core.platform.platformHorizontalDragScroll
 import com.phimbud.mobile.ui.components.MovieRow
 import com.phimbud.mobile.ui.theme.NetflixBlack
 import com.phimbud.mobile.ui.theme.NetflixCard
@@ -87,6 +90,10 @@ fun DetailScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    PlatformBackHandler(enabled = true) {
+        onBackClick()
+    }
 
     Box(
         modifier = modifier
@@ -405,7 +412,12 @@ fun DetailScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 if (detail.seasons.size > 1) {
-                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    val seasonsRowState = rememberLazyListState()
+                                    LazyRow(
+                                        state = seasonsRowState,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.platformHorizontalDragScroll(seasonsRowState)
+                                    ) {
                                         items(
                                             items = detail.seasons,
                                             key = { it.fid },

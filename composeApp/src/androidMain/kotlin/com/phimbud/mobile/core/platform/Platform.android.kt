@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -171,3 +173,6 @@ actual fun PlatformSystemBarsEffect() {
         }
     }
 }
+
+@Composable
+actual fun Modifier.platformHorizontalDragScroll(scrollableState: ScrollableState): Modifier = this

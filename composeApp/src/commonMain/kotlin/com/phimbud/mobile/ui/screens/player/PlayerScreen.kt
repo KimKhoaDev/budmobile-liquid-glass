@@ -124,6 +124,10 @@ fun PlayerScreen(
     var showServerDialog by remember { mutableStateOf(false) }
     var showEpisodesOverlay by remember { mutableStateOf(false) }
 
+    PlatformBackHandler(enabled = !showEpisodesOverlay && !showSubtitleDialog && !showServerDialog) {
+        onBackClick()
+    }
+
     PlatformBackHandler(enabled = showEpisodesOverlay) {
         showEpisodesOverlay = false
     }

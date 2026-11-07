@@ -2,8 +2,10 @@
 
 package com.phimbud.mobile.core.platform
 
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
 import coil3.ImageLoader
 import okio.FileSystem
 import okio.Path
@@ -193,3 +195,6 @@ actual fun PlatformSystemBarsEffect() {
         UIApplication.sharedApplication.setStatusBarStyle(UIStatusBarStyleLightContent, animated = true)
     }
 }
+
+@Composable
+actual fun Modifier.platformHorizontalDragScroll(scrollableState: ScrollableState): Modifier = this

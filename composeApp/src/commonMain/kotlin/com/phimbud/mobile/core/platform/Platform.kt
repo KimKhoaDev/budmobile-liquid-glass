@@ -1,7 +1,9 @@
 package com.phimbud.mobile.core.platform
 
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Modifier
 import coil3.ImageLoader
 import okio.Path
 import kotlin.math.roundToLong
@@ -50,6 +52,9 @@ expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
 
 @Composable
 expect fun PlatformSystemBarsEffect()
+
+@Composable
+expect fun Modifier.platformHorizontalDragScroll(scrollableState: ScrollableState): Modifier
 
 fun utcYearFromEpochMillis(epochMillis: Long = currentTimeMillis()): Int {
     val totalSeconds = epochMillis / 1000L

@@ -1,3 +1,4 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -16,6 +17,13 @@ kotlin {
     }
 
     androidTarget {
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
+
+    jvm("desktop") {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
@@ -88,6 +96,26 @@ kotlin {
             implementation("io.ktor:ktor-server-core:$ktorVersion")
             implementation("io.ktor:ktor-server-cio:$ktorVersion")
         }
+
+        val desktopMain by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
+
+                implementation("io.ktor:ktor-client-okhttp:$ktorVersion")
+                implementation("com.squareup.okhttp3:okhttp:4.12.0")
+                implementation("io.ktor:ktor-server-core:$ktorVersion")
+                implementation("io.ktor:ktor-server-cio:$ktorVersion")
+
+                implementation("org.bytedeco:javacv:1.5.11") {
+                    isTransitive = false
+                }
+                implementation("org.bytedeco:javacpp:1.5.11")
+                implementation("org.bytedeco:javacpp:1.5.11:windows-x86_64")
+                implementation("org.bytedeco:ffmpeg:7.1-1.5.11")
+                implementation("org.bytedeco:ffmpeg:7.1-1.5.11:windows-x86_64")
+            }
+        }
     }
 }
 
@@ -138,6 +166,36 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+compose.desktop {
+    application {
+        mainClass = "com.phimbud.mobile.MainKt"
+        jvmArgs += listOf("-Dfile.encoding=UTF-8")
+
+        nativeDistributions {
+            targetFormats(TargetFormat.Exe, TargetFormat.Msi)
+            packageName = "PhimBud"
+            packageVersion = "1.0.0"
+            description = "PhimBud Windows App"
+            vendor = "PhimBud"
+            modules(
+                "java.desktop",
+                "java.instrument",
+                "java.management",
+                "java.naming",
+                "java.net.http",
+                "java.prefs",
+                "java.sql",
+                "jdk.crypto.ec",
+                "jdk.unsupported"
+            )
+            windows {
+                menuGroup = "PhimBud"
+                shortcut = true
+            }
         }
     }
 }

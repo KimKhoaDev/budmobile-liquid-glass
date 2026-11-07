@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.phimbud.mobile.core.model.Movie
+import com.phimbud.mobile.core.platform.platformHorizontalDragScroll
 import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixDarkGray
 import com.phimbud.mobile.ui.theme.NetflixRed
@@ -119,9 +121,12 @@ fun Top10MovieRow(
             }
         }
 
+        val rowState = rememberLazyListState()
         LazyRow(
+            state = rowState,
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.platformHorizontalDragScroll(rowState)
         ) {
             itemsIndexed(
                 items = top10Items,
