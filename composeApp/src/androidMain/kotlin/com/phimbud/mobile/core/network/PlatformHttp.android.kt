@@ -7,6 +7,7 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 class OkHttpCookieJarAdapter(
     private val cookieStore: PersistentCookieStore
@@ -50,6 +51,12 @@ actual class PlatformHttpEngine actual constructor(
         .addInterceptor(BrowserHeadersInterceptor())
         .build()
 
+    private val cleanPublicOkHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .cookieJar(CookieJar.NO_COOKIES)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .build()
+
     actual val httpClient: HttpClient = HttpClient(OkHttp) {
         followRedirects = true
         engine {
@@ -66,5 +73,14 @@ actual class PlatformHttpEngine actual constructor(
         }
     }.also { client ->
         installBrowserAndCookieInterceptor(client, cookieStore)
+    }
+
+    actual val publicHttpClient: HttpClient = HttpClient(OkHttp) {
+        followRedirects = true
+        engine {
+            preconfigured = cleanPublicOkHttpClient
+        }
+    }.also { client ->
+        installCleanPublicInterceptor(client)
     }
 }

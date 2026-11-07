@@ -7,29 +7,47 @@ import com.phimbud.mobile.core.model.SearchItem
 import com.phimbud.mobile.core.model.SearchNormalizer
 import com.phimbud.mobile.core.model.Subtitle
 import com.phimbud.mobile.core.model.TitleDetail
+import com.phimbud.mobile.core.model.Top10CatalogMatcher
+import com.phimbud.mobile.core.model.Top10Lists
 import com.phimbud.mobile.core.model.TtlLruCache
 import com.phimbud.mobile.core.model.UserSession
 import com.phimbud.mobile.core.model.WatchInfo
 import com.phimbud.mobile.core.network.PhimBudApiClient
 import com.phimbud.mobile.core.network.SessionExpiredException
+import com.phimbud.mobile.core.network.Top10Service
 import com.phimbud.mobile.core.platform.CachedSubtitle
+import com.phimbud.mobile.core.platform.KeyValueStore
 import com.phimbud.mobile.core.platform.PlatformContext
+import com.phimbud.mobile.core.platform.currentTimeMillis
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.concurrent.Volatile
 
 class PhimBudRepository(val platformContext: PlatformContext) {
 
     companion object {
         private const val DETAIL_CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
+        private const val TOP10_CACHE_TTL_MS = 6 * 60 * 60 * 1000L // 6 hours
+        private const val TOP10_CACHE_KEY = "top10_lists_v1"
+
+        private val cacheJson = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        }
     }
 
     val apiClient = PhimBudApiClient(platformContext)
+    private val top10Service = Top10Service(apiClient.httpEngine.publicHttpClient)
+    private val top10CacheStore = KeyValueStore(platformContext, "phimbud_top10_cache")
 
     private val _isLoggedIn = MutableStateFlow(apiClient.hasSavedSession())
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
@@ -40,13 +58,30 @@ class PhimBudRepository(val platformContext: PlatformContext) {
     private val _homeFeed = MutableStateFlow(HomeFeed())
     val homeFeed: StateFlow<HomeFeed> = _homeFeed.asStateFlow()
 
+    private val _top10Lists = MutableStateFlow(readCachedTop10FromDisk())
+    val top10Lists: StateFlow<Top10Lists> = _top10Lists.asStateFlow()
+
     @Volatile
     private var cachedSearchIndex: List<SearchItem> = emptyList()
     private val searchIndexMutex = Mutex()
     private val homeFeedMutex = Mutex()
+    private val top10Mutex = Mutex()
 
     private val detailCache = TtlLruCache<String, TitleDetail>(maxSize = 20, ttlMs = DETAIL_CACHE_TTL_MS)
     private val episodesCache = TtlLruCache<String, List<Episode>>(maxSize = 30, ttlMs = DETAIL_CACHE_TTL_MS)
+
+    private fun readCachedTop10FromDisk(): Top10Lists {
+        val raw = top10CacheStore.getString(TOP10_CACHE_KEY) ?: return Top10Lists()
+        return runCatching {
+            cacheJson.decodeFromString<Top10Lists>(raw)
+        }.getOrDefault(Top10Lists())
+    }
+
+    private fun saveTop10ToDisk(lists: Top10Lists) {
+        runCatching {
+            top10CacheStore.putString(TOP10_CACHE_KEY, cacheJson.encodeToString(lists))
+        }
+    }
 
     fun hasHomeFeedData(): Boolean {
         val f = _homeFeed.value
@@ -69,10 +104,12 @@ class PhimBudRepository(val platformContext: PlatformContext) {
         apiClient.logout()
         detailCache.evictAll()
         episodesCache.evictAll()
+        top10CacheStore.clear()
         cachedSearchIndex = emptyList()
         _isLoggedIn.value = false
         _userSession.value = UserSession()
         _homeFeed.value = HomeFeed()
+        _top10Lists.value = Top10Lists()
     }
 
     suspend fun loadHomeFeed(): Result<HomeFeed> = homeFeedMutex.withLock {
@@ -87,6 +124,59 @@ class PhimBudRepository(val platformContext: PlatformContext) {
             _homeFeed.value = feed
             feed
         }
+    }
+
+    private suspend fun ensureSearchIndexLoaded(): List<SearchItem> {
+        if (cachedSearchIndex.isEmpty()) {
+            searchIndexMutex.withLock {
+                if (cachedSearchIndex.isEmpty()) {
+                    val res = apiClient.getAllTitlesIndex()
+                    res.onFailure { err ->
+                        if (err is SessionExpiredException) logout()
+                    }
+                    if (res.isSuccess) {
+                        cachedSearchIndex = res.getOrDefault(emptyList())
+                    }
+                }
+            }
+        }
+        return cachedSearchIndex
+    }
+
+    suspend fun loadTop10Lists(forceRefresh: Boolean = false): Top10Lists = top10Mutex.withLock {
+        val now = currentTimeMillis()
+        val current = _top10Lists.value
+        if (!forceRefresh && current.hasAnyData && (now - current.updatedAtEpochMs) in 0L until TOP10_CACHE_TTL_MS) {
+            return current
+        }
+
+        val resolved = coroutineScope {
+            val catalogDeferred = async { ensureSearchIndexLoaded() }
+            val chartsDeferred = async { top10Service.fetchRawCharts() }
+
+            val catalog = catalogDeferred.await()
+            val rawCharts = chartsDeferred.await()
+
+            if (catalog.isNotEmpty() && !rawCharts.isEmpty) {
+                withContext(Dispatchers.Default) {
+                    Top10CatalogMatcher.buildTop10Lists(
+                        raw = rawCharts,
+                        catalog = catalog,
+                        updatedAtEpochMs = currentTimeMillis()
+                    )
+                }
+            } else {
+                null
+            }
+        }
+
+        if (resolved != null && resolved.hasAnyData) {
+            _top10Lists.value = resolved
+            saveTop10ToDisk(resolved)
+            return resolved
+        }
+
+        return current
     }
 
     suspend fun getTitleDetail(fid: String, forceRefresh: Boolean = false): Result<TitleDetail> {
@@ -141,18 +231,7 @@ class PhimBudRepository(val platformContext: PlatformContext) {
     }
 
     suspend fun searchTitles(query: String): List<SearchItem> {
-        if (cachedSearchIndex.isEmpty()) {
-            searchIndexMutex.withLock {
-                if (cachedSearchIndex.isEmpty()) {
-                    val res = apiClient.getAllTitlesIndex()
-                    if (res.isSuccess) {
-                        cachedSearchIndex = res.getOrDefault(emptyList())
-                    }
-                }
-            }
-        }
-
-        val snapshot = cachedSearchIndex
+        val snapshot = ensureSearchIndexLoaded()
         if (snapshot.isEmpty()) return emptyList()
         if (query.isBlank()) return snapshot.take(30)
 

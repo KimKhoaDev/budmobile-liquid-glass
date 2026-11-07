@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -44,12 +45,13 @@ fun HeroBanner(
     movie: Movie,
     onPlayClick: () -> Unit,
     onInfoClick: () -> Unit,
+    rankBadgeText: String? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(440.dp)
+            .height(450.dp)
     ) {
         AsyncImage(
             model = movie.backdropUrl ?: movie.posterUrl,
@@ -58,6 +60,24 @@ fun HeroBanner(
             modifier = Modifier.fillMaxSize()
         )
 
+        // Top gradient scrim so header logo & filter pills remain readable over bright posters
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(155.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            NetflixBlack.copy(alpha = 0.85f),
+                            NetflixBlack.copy(alpha = 0.45f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        // Bottom gradient scrim
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -66,10 +86,10 @@ fun HeroBanner(
                         colors = listOf(
                             Color.Transparent,
                             NetflixBlack.copy(alpha = 0.2f),
-                            NetflixBlack.copy(alpha = 0.8f),
+                            NetflixBlack.copy(alpha = 0.82f),
                             NetflixBlack
                         ),
-                        startY = 150f
+                        startY = 160f
                     )
                 )
         )
@@ -81,6 +101,34 @@ fun HeroBanner(
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
+            if (!rankBadgeText.isNullOrBlank()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Surface(
+                        color = NetflixRed,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "TOP 10",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = rankBadgeText,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             Text(
                 text = movie.displayTitle,
                 color = NetflixTextPrimary,

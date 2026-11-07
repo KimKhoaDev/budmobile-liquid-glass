@@ -201,3 +201,47 @@ data class UserSession(
     val isAdmin: Boolean = false,
     val isVip: Boolean = true
 )
+
+
+enum class HomeFilterMode {
+    ALL,
+    TOP10_VIETNAM,
+    TOP10_GLOBAL
+}
+
+enum class Top10CategoryFilter {
+    ALL,
+    SERIES,
+    MOVIES
+}
+
+@Immutable
+@Serializable
+data class Top10Lists(
+    val vnAll: List<Movie> = emptyList(),
+    val vnSeries: List<Movie> = emptyList(),
+    val vnMovies: List<Movie> = emptyList(),
+    val globalAll: List<Movie> = emptyList(),
+    val globalSeries: List<Movie> = emptyList(),
+    val globalMovies: List<Movie> = emptyList(),
+    val updatedAtEpochMs: Long = 0L
+) {
+    val hasAnyData: Boolean
+        get() = vnAll.isNotEmpty() || globalAll.isNotEmpty()
+
+    fun getList(mode: HomeFilterMode, category: Top10CategoryFilter): List<Movie> {
+        return when (mode) {
+            HomeFilterMode.TOP10_VIETNAM -> when (category) {
+                Top10CategoryFilter.ALL -> vnAll
+                Top10CategoryFilter.SERIES -> vnSeries
+                Top10CategoryFilter.MOVIES -> vnMovies
+            }
+            HomeFilterMode.TOP10_GLOBAL -> when (category) {
+                Top10CategoryFilter.ALL -> globalAll
+                Top10CategoryFilter.SERIES -> globalSeries
+                Top10CategoryFilter.MOVIES -> globalMovies
+            }
+            HomeFilterMode.ALL -> emptyList()
+        }
+    }
+}

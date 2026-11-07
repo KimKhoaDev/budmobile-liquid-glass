@@ -35,4 +35,20 @@ actual class PlatformHttpEngine actual constructor(
     }.also { client ->
         installBrowserAndCookieInterceptor(client, cookieStore)
     }
+
+    actual val publicHttpClient: HttpClient = HttpClient(Darwin) {
+        followRedirects = true
+        engine {
+            configureSession {
+                HTTPShouldSetCookies = false
+                timeoutIntervalForRequest = 8.0
+                timeoutIntervalForResource = 10.0
+            }
+            configureRequest {
+                setAllowsCellularAccess(true)
+            }
+        }
+    }.also { client ->
+        installCleanPublicInterceptor(client)
+    }
 }

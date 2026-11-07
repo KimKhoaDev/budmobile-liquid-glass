@@ -11,6 +11,7 @@ expect class PlatformHttpEngine(
 ) {
     val httpClient: HttpClient
     val noRedirectHttpClient: HttpClient
+    val publicHttpClient: HttpClient
 }
 
 internal fun installBrowserAndCookieInterceptor(
@@ -42,5 +43,27 @@ internal fun installBrowserAndCookieInterceptor(
             cookieStore.saveFromSetCookieHeaders(call.request.url.host, setCookies)
         }
         call
+    }
+}
+
+/**
+ * Installs clean, standalone browser headers for public third-party endpoints (e.g. Netflix Tudum / Apple RSS).
+ * Strictly strips any Origin, Referer, or Cookie headers so phimbud.com identity/session is NEVER leaked.
+ */
+internal fun installCleanPublicInterceptor(client: HttpClient) {
+    client.plugin(HttpSend).intercept { request ->
+        request.headers.remove("Origin")
+        request.headers.remove("Referer")
+        request.headers.remove("Cookie")
+        if (!request.headers.contains("User-Agent")) {
+            request.headers.append("User-Agent", BrowserHeaders.USER_AGENT)
+        }
+        if (!request.headers.contains("Accept-Language")) {
+            request.headers.append("Accept-Language", "en-US,en;q=0.9")
+        }
+        if (!request.headers.contains("Accept")) {
+            request.headers.append("Accept", "text/html,application/json,*/*;q=0.8")
+        }
+        execute(request)
     }
 }

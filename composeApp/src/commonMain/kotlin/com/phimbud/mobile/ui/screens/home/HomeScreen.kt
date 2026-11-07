@@ -1,6 +1,13 @@
 package com.phimbud.mobile.ui.screens.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -20,21 +30,30 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.phimbud.mobile.core.model.HomeFilterMode
 import com.phimbud.mobile.core.model.Movie
+import com.phimbud.mobile.core.model.Top10CategoryFilter
+import com.phimbud.mobile.core.platform.PlatformBackHandler
 import com.phimbud.mobile.ui.components.HeroBanner
 import com.phimbud.mobile.ui.components.MovieRow
+import com.phimbud.mobile.ui.components.Top10MovieRow
+import com.phimbud.mobile.ui.components.Top10RankedListItem
 import com.phimbud.mobile.ui.theme.NetflixBlack
+import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixRed
+import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 
 @Composable
@@ -46,6 +65,14 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val filterMode by viewModel.filterMode.collectAsState()
+    val top10Category by viewModel.top10Category.collectAsState()
+    val top10Lists by viewModel.top10Lists.collectAsState()
+    val isTop10Loading by viewModel.isTop10Loading.collectAsState()
+
+    PlatformBackHandler(enabled = filterMode != HomeFilterMode.ALL) {
+        viewModel.selectFilterMode(HomeFilterMode.ALL)
+    }
 
     Box(
         modifier = modifier
@@ -76,115 +103,366 @@ fun HomeScreen(
             }
             is HomeUiState.Success -> {
                 val feed = state.feed
-                val heroMovie = feed.trending.firstOrNull() ?: feed.movies.firstOrNull()
 
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    if (heroMovie != null) {
-                        item(key = "hero_banner", contentType = "hero") {
-                            HeroBanner(
-                                movie = heroMovie,
-                                onPlayClick = {
-                                    viewModel.playMovie(heroMovie, onPlayClick)
-                                },
-                                onInfoClick = { onMovieClick(heroMovie) }
-                            )
+                if (filterMode == HomeFilterMode.ALL) {
+                    val heroMovie = feed.trending.firstOrNull() ?: feed.movies.firstOrNull()
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        if (heroMovie != null) {
+                            item(key = "hero_banner", contentType = "hero") {
+                                HeroBanner(
+                                    movie = heroMovie,
+                                    onPlayClick = {
+                                        viewModel.playMovie(heroMovie, onPlayClick)
+                                    },
+                                    onInfoClick = { onMovieClick(heroMovie) }
+                                )
+                            }
+                        } else {
+                            item(key = "top_pad") {
+                                Spacer(modifier = Modifier.height(120.dp))
+                            }
+                        }
+
+                        if (feed.watching.isNotEmpty()) {
+                            item(key = "row_watching", contentType = "movie_row") {
+                                MovieRow(
+                                    title = "Tiếp tục xem",
+                                    movies = feed.watching,
+                                    onMovieClick = onMovieClick
+                                )
+                            }
+                        }
+
+                        if (top10Lists.vnAll.isNotEmpty()) {
+                            item(key = "row_top10_vn", contentType = "top10_row") {
+                                Top10MovieRow(
+                                    title = "Tại Việt Nam hôm nay",
+                                    movies = top10Lists.vnAll,
+                                    onMovieClick = onMovieClick,
+                                    onSeeAllClick = {
+                                        viewModel.selectFilterMode(HomeFilterMode.TOP10_VIETNAM)
+                                    }
+                                )
+                            }
+                        }
+
+                        if (top10Lists.globalAll.isNotEmpty()) {
+                            item(key = "row_top10_global", contentType = "top10_row") {
+                                Top10MovieRow(
+                                    title = "Thế Giới tuần này",
+                                    movies = top10Lists.globalAll,
+                                    onMovieClick = onMovieClick,
+                                    onSeeAllClick = {
+                                        viewModel.selectFilterMode(HomeFilterMode.TOP10_GLOBAL)
+                                    }
+                                )
+                            }
+                        }
+
+                        if (feed.trending.isNotEmpty()) {
+                            item(key = "row_trending", contentType = "movie_row") {
+                                MovieRow(
+                                    title = "Xu hướng thịnh hành",
+                                    movies = feed.trending,
+                                    onMovieClick = onMovieClick
+                                )
+                            }
+                        }
+
+                        if (feed.updated.isNotEmpty()) {
+                            item(key = "row_updated", contentType = "movie_row") {
+                                MovieRow(
+                                    title = "Mới cập nhật",
+                                    movies = feed.updated,
+                                    onMovieClick = onMovieClick
+                                )
+                            }
+                        }
+
+                        if (feed.shows.isNotEmpty()) {
+                            item(key = "row_shows", contentType = "movie_row") {
+                                MovieRow(
+                                    title = "Phim bộ chọn lọc",
+                                    movies = feed.shows,
+                                    onMovieClick = onMovieClick
+                                )
+                            }
+                        }
+
+                        if (feed.movies.isNotEmpty()) {
+                            item(key = "row_movies", contentType = "movie_row") {
+                                MovieRow(
+                                    title = "Phim lẻ đặc sắc",
+                                    movies = feed.movies,
+                                    onMovieClick = onMovieClick
+                                )
+                            }
+                        }
+
+                        if (feed.wishlist.isNotEmpty()) {
+                            item(key = "row_wishlist", contentType = "movie_row") {
+                                MovieRow(
+                                    title = "Danh sách của tôi",
+                                    movies = feed.wishlist,
+                                    onMovieClick = onMovieClick
+                                )
+                            }
+                        }
+
+                        item(key = "bottom_spacer", contentType = "spacer") {
+                            Spacer(modifier = Modifier.height(30.dp))
                         }
                     }
-
-                    if (feed.watching.isNotEmpty()) {
-                        item(key = "row_watching", contentType = "movie_row") {
-                            MovieRow(
-                                title = "Tiếp tục xem",
-                                movies = feed.watching,
-                                onMovieClick = onMovieClick
-                            )
-                        }
+                } else {
+                    // Dedicated Top 10 Filtered View (Vietnam or Global + Category)
+                    val activeList = top10Lists.getList(filterMode, top10Category)
+                    val regionLabel = if (filterMode == HomeFilterMode.TOP10_VIETNAM) "tại Việt Nam" else "Thế Giới"
+                    val categorySuffix = when (top10Category) {
+                        Top10CategoryFilter.ALL -> ""
+                        Top10CategoryFilter.SERIES -> " (Phim Bộ)"
+                        Top10CategoryFilter.MOVIES -> " (Phim Lẻ)"
                     }
 
-                    if (feed.trending.isNotEmpty()) {
-                        item(key = "row_trending", contentType = "movie_row") {
-                            MovieRow(
-                                title = "Xu hướng thịnh hành",
-                                movies = feed.trending,
-                                onMovieClick = onMovieClick
+                    if (isTop10Loading && activeList.isEmpty()) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(color = NetflixRed)
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = "Đang cập nhật Bảng xếp hạng Top 10 $regionLabel...",
+                                color = NetflixTextSecondary,
+                                fontSize = 14.sp
                             )
                         }
-                    }
-
-                    if (feed.updated.isNotEmpty()) {
-                        item(key = "row_updated", contentType = "movie_row") {
-                            MovieRow(
-                                title = "Mới cập nhật",
-                                movies = feed.updated,
-                                onMovieClick = onMovieClick
+                    } else if (activeList.isEmpty()) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "Chưa thể tải dữ liệu Top 10 $regionLabel$categorySuffix",
+                                color = NetflixTextSecondary,
+                                fontSize = 14.sp
                             )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = { viewModel.loadTop10(forceRefresh = true) },
+                                colors = ButtonDefaults.buttonColors(containerColor = NetflixRed)
+                            ) {
+                                Text("Tải lại")
+                            }
                         }
-                    }
+                    } else {
+                        val top1Movie = activeList.first()
 
-                    if (feed.shows.isNotEmpty()) {
-                        item(key = "row_shows", contentType = "movie_row") {
-                            MovieRow(
-                                title = "Phim bộ chọn lọc",
-                                movies = feed.shows,
-                                onMovieClick = onMovieClick
-                            )
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            item(key = "top10_hero_${top1Movie.fid}", contentType = "hero") {
+                                HeroBanner(
+                                    movie = top1Movie,
+                                    rankBadgeText = "#1 $regionLabel$categorySuffix",
+                                    onPlayClick = {
+                                        viewModel.playMovie(top1Movie, onPlayClick)
+                                    },
+                                    onInfoClick = { onMovieClick(top1Movie) }
+                                )
+                            }
+
+                            item(key = "top10_section_header") {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Bảng xếp hạng Top 10 $regionLabel$categorySuffix",
+                                        color = NetflixTextPrimary,
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            itemsIndexed(
+                                items = activeList,
+                                key = { _, m -> "ranked_${m.fid}" },
+                                contentType = { _, _ -> "top10_ranked_item" }
+                            ) { index, movie ->
+                                Top10RankedListItem(
+                                    rank = index + 1,
+                                    movie = movie,
+                                    onCardClick = { onMovieClick(movie) },
+                                    onPlayClick = {
+                                        viewModel.playMovie(movie, onPlayClick)
+                                    },
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                                )
+                            }
+
+                            item(key = "top10_bottom_spacer") {
+                                Spacer(modifier = Modifier.height(32.dp))
+                            }
                         }
-                    }
-
-                    if (feed.movies.isNotEmpty()) {
-                        item(key = "row_movies", contentType = "movie_row") {
-                            MovieRow(
-                                title = "Phim lẻ đặc sắc",
-                                movies = feed.movies,
-                                onMovieClick = onMovieClick
-                            )
-                        }
-                    }
-
-                    if (feed.wishlist.isNotEmpty()) {
-                        item(key = "row_wishlist", contentType = "movie_row") {
-                            MovieRow(
-                                title = "Danh sách của tôi",
-                                movies = feed.wishlist,
-                                onMovieClick = onMovieClick
-                            )
-                        }
-                    }
-
-                    item(key = "bottom_spacer", contentType = "spacer") {
-                        Spacer(modifier = Modifier.height(30.dp))
                     }
                 }
 
-                // Top Header Overlay (Logo + Search Button, respects iOS notch/Dynamic Island)
-                Row(
+                // Top Header Overlay (Logo + Search Button + Netflix Filter Pills)
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "PHIMBUD",
-                        color = NetflixRed,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
-                    )
-
-                    IconButton(onClick = onSearchClick) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Tìm kiếm",
-                            tint = Color.White,
-                            modifier = Modifier.size(26.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    NetflixBlack.copy(alpha = 0.92f),
+                                    NetflixBlack.copy(alpha = 0.68f),
+                                    Color.Transparent
+                                )
+                            )
                         )
+                        .statusBarsPadding()
+                        .padding(bottom = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "PHIMBUD",
+                            color = NetflixRed,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp
+                        )
+
+                        IconButton(onClick = onSearchClick) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Tìm kiếm",
+                                tint = Color.White,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+
+                    // Primary Filter Chips: Tất cả | Top 10 Việt Nam | Top 10 Thế Giới
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        NetflixFilterPill(
+                            label = "Tất cả",
+                            selected = filterMode == HomeFilterMode.ALL,
+                            onClick = { viewModel.selectFilterMode(HomeFilterMode.ALL) }
+                        )
+                        NetflixFilterPill(
+                            label = "🇻🇳 Top 10 Việt Nam",
+                            selected = filterMode == HomeFilterMode.TOP10_VIETNAM,
+                            onClick = { viewModel.selectFilterMode(HomeFilterMode.TOP10_VIETNAM) }
+                        )
+                        NetflixFilterPill(
+                            label = "🌍 Top 10 Thế Giới",
+                            selected = filterMode == HomeFilterMode.TOP10_GLOBAL,
+                            onClick = { viewModel.selectFilterMode(HomeFilterMode.TOP10_GLOBAL) }
+                        )
+                    }
+
+                    // Secondary Sub-Category Pills when viewing Top 10: Tất cả | Phim Bộ | Phim Lẻ
+                    AnimatedVisibility(
+                        visible = filterMode != HomeFilterMode.ALL,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            NetflixCategoryChip(
+                                label = "Tất cả",
+                                selected = top10Category == Top10CategoryFilter.ALL,
+                                onClick = { viewModel.selectTop10Category(Top10CategoryFilter.ALL) }
+                            )
+                            NetflixCategoryChip(
+                                label = "Phim Bộ",
+                                selected = top10Category == Top10CategoryFilter.SERIES,
+                                onClick = { viewModel.selectTop10Category(Top10CategoryFilter.SERIES) }
+                            )
+                            NetflixCategoryChip(
+                                label = "Phim Lẻ",
+                                selected = top10Category == Top10CategoryFilter.MOVIES,
+                                onClick = { viewModel.selectTop10Category(Top10CategoryFilter.MOVIES) }
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NetflixFilterPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = if (selected) NetflixRed else Color.Black.copy(alpha = 0.55f),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (selected) NetflixRed else Color.White.copy(alpha = 0.35f)
+        ),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+        )
+    }
+}
+
+@Composable
+private fun NetflixCategoryChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = if (selected) Color.White else NetflixCard.copy(alpha = 0.8f),
+        border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color.Black else NetflixTextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+        )
     }
 }
