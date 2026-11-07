@@ -39,8 +39,5 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
 
-# Media3 / ExoPlayer
+# Media3 / ExoPlayer (consumer rules bundled in Media3 AARs handle reflection entry points)
 -dontwarn androidx.media3.**
--keepclassmembers class androidx.media3.** {
-    *;
-}

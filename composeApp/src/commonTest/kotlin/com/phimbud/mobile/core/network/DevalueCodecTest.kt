@@ -1,8 +1,12 @@
 package com.phimbud.mobile.core.network
 
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -45,5 +49,32 @@ class DevalueCodecTest {
         val encoded = DevalueCodec.encodeAddToCollection("mem3", "")
         assertNotNull(encoded)
         assertTrue(encoded.isNotEmpty())
+    }
+
+    @Test
+    fun testUnflattenHandlesSentinelsFloatsNestedArraysAndCycles() {
+        val pool = JsonArray(
+            listOf(
+                JsonObject(
+                    mapOf(
+                        "rating" to JsonPrimitive(1),
+                        "empty" to JsonPrimitive(-1),
+                        "tags" to JsonPrimitive(2),
+                        "self" to JsonPrimitive(0)
+                    )
+                ),
+                JsonPrimitive(8.7),
+                JsonArray(listOf(JsonPrimitive(3), JsonPrimitive(-4))),
+                JsonPrimitive("Sci-Fi")
+            )
+        )
+
+        val resolved = DevalueCodec.unflatten(pool).jsonObject
+        assertEquals(8.7, resolved["rating"]?.jsonPrimitive?.double)
+        assertEquals(JsonNull, resolved["empty"])
+        val tags = resolved["tags"]!!.jsonArray
+        assertEquals("Sci-Fi", tags[0].jsonPrimitive.content)
+        assertEquals(JsonNull, tags[1])
+        assertEquals(JsonNull, resolved["self"])
     }
 }

@@ -42,4 +42,13 @@ class UrlCipherTest {
         val decoded = UrlCipher.decodeSegmentFilename(plain)
         assertNull(decoded)
     }
+
+    @Test
+    fun testBase64DecodeHandlesEmbeddedWhitespaceAndUnpaddedTail() {
+        val wrapped = "  SGVs\r\nbG8g\nV29y\tbGQh  "
+        assertEquals("Hello World!", UrlCipher.base64Decode(wrapped).decodeToString())
+        assertEquals("PhimBud", UrlCipher.base64Decode("UGhpbUJ1ZA").decodeToString())
+        assertEquals(0, UrlCipher.base64Decode("Invalid@Char==").size)
+        assertNull(UrlCipher.decodeSegmentFilename("Invalid@Char=="))
+    }
 }

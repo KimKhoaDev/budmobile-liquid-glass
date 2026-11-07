@@ -11,12 +11,9 @@ import com.phimbud.mobile.core.platform.CachedSubtitle
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import com.phimbud.mobile.player.IntroRecapDetector
 import com.phimbud.mobile.player.SkipSegment
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -74,7 +71,23 @@ class PlayerViewModel(
             coroutineScope {
                 val watchInfoDeferred = async { repository.getWatchInfo(fid) }
                 val streamDeferred = async { repository.getVideoSrc(fid, server) }
-                val subsDeferred = async { repository.getSubtitles(fid) }
+                val subBundleDeferred = async {
+                    val rawSubs = repository.getSubtitles(fid).getOrDefault(emptyList())
+                    val subs = rawSubs.sortedWith(
+                        compareByDescending<Subtitle> { it.language.startsWith("vi", ignoreCase = true) }
+                            .thenByDescending { it.isDefault }
+                            .thenBy { it.label }
+                    )
+                    val defaultSub = subs.firstOrNull { it.language.startsWith("vi", ignoreCase = true) }
+                        ?: subs.firstOrNull { it.isDefault }
+                        ?: subs.firstOrNull()
+                    val subData = if (defaultSub != null) {
+                        repository.downloadSubtitle(defaultSub, fid).getOrNull()
+                    } else {
+                        null
+                    }
+                    Triple(subs, defaultSub, subData)
+                }
 
                 val streamRes = streamDeferred.await()
                 if (streamRes.isFailure) {
@@ -82,34 +95,13 @@ class PlayerViewModel(
                         streamRes.exceptionOrNull()?.message ?: "Không thể lấy link video"
                     )
                     watchInfoDeferred.cancel()
-                    subsDeferred.cancel()
+                    subBundleDeferred.cancel()
                     return@coroutineScope
                 }
                 val m3u8Url = streamRes.getOrThrow()
                 val watchInfo = watchInfoDeferred.await().getOrDefault(WatchInfo(fid = fid))
-                val rawSubs = subsDeferred.await().getOrDefault(emptyList())
-
-                val subs = rawSubs.sortedWith(
-                    compareByDescending<Subtitle> { it.language.startsWith("vi", ignoreCase = true) }
-                        .thenByDescending { it.isDefault }
-                        .thenBy { it.label }
-                )
-
-                val defaultSub = subs.firstOrNull { it.language.startsWith("vi", ignoreCase = true) }
-                    ?: subs.firstOrNull { it.isDefault }
-                    ?: subs.firstOrNull()
-
-                var subData: CachedSubtitle? = null
-                var detectedSkipSegments: List<SkipSegment> = emptyList()
+                val (subs, defaultSub, subData) = subBundleDeferred.await()
                 val isEpisode = watchInfo.showFid.isNotBlank() || watchInfo.seasonFid.isNotBlank() || watchInfo.nextTitleFid != null
-                if (defaultSub != null) {
-                    subData = repository.downloadSubtitle(defaultSub, fid).getOrNull()
-                    if (subData != null) {
-                        detectedSkipSegments = withContext(Dispatchers.Default) {
-                            IntroRecapDetector.detectFromSrt(subData.content, isEpisode = isEpisode)
-                        }
-                    }
-                }
 
                 // Reuse already-loaded seasons/episodes if switching episodes within the same show/season
                 val sameShow = previousReady != null &&
@@ -129,7 +121,12 @@ class PlayerViewModel(
                 } else {
                     null
                 }
-                val initialEpisodes = if (sameSeason) previousReady?.episodes.orEmpty() else emptyList()
+                val cachedSeasonEps = if (!sameSeason && watchInfo.seasonFid.isNotBlank()) {
+                    repository.getCachedSeasonEpisodes(watchInfo.seasonFid).orEmpty()
+                } else {
+                    emptyList()
+                }
+                val initialEpisodes = if (sameSeason) previousReady?.episodes.orEmpty() else cachedSeasonEps
 
                 _uiState.value = PlayerUiState.Ready(
                     watchInfo = watchInfo,
@@ -138,12 +135,26 @@ class PlayerViewModel(
                     subtitles = subs,
                     activeSubtitle = defaultSub,
                     activeSubtitleData = subData,
-                    skipSegments = detectedSkipSegments,
+                    skipSegments = emptyList(),
                     seasons = initialSeasons,
                     selectedSeason = initialSelectedSeason,
                     episodes = initialEpisodes,
                     isEpisodesLoading = isEpisode && initialEpisodes.isEmpty()
                 )
+
+                if (subData != null) {
+                    launch {
+                        val detectedSkipSegments = withContext(Dispatchers.Default) {
+                            IntroRecapDetector.detectFromSrt(subData.content, isEpisode = isEpisode)
+                        }
+                        if (detectedSkipSegments.isNotEmpty()) {
+                            val current = _uiState.value as? PlayerUiState.Ready
+                            if (current != null && current.watchInfo.fid == fid) {
+                                _uiState.value = current.copy(skipSegments = detectedSkipSegments)
+                            }
+                        }
+                    }
+                }
 
                 if (isEpisode && !sameSeason) {
                     loadShowSeasonsAndEpisodes(watchInfo)
@@ -225,9 +236,7 @@ class PlayerViewModel(
     fun playNextEpisode(nextFid: String, previousPositionSeconds: Long) {
         val prevFid = watchFid
         if (previousPositionSeconds > 5 && prevFid.isNotBlank() && prevFid != nextFid) {
-            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                repository.syncPlaytime(prevFid, previousPositionSeconds.toInt())
-            }
+            repository.syncPlaytimeInBackground(prevFid, previousPositionSeconds.toInt())
         }
         loadStream(nextFid, currentServer)
     }
@@ -283,10 +292,11 @@ class PlayerViewModel(
         syncJob = null
         val fidSnapshot = watchFid
         if (finalPositionSeconds > 5 && fidSnapshot.isNotBlank()) {
-            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                repository.syncPlaytime(fidSnapshot, finalPositionSeconds.toInt())
-                repository.loadHomeFeed()
-            }
+            repository.syncPlaytimeInBackground(
+                fid = fidSnapshot,
+                seconds = finalPositionSeconds.toInt(),
+                refreshFeedAfter = true
+            )
         }
     }
 

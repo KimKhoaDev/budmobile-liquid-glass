@@ -31,17 +31,24 @@ class BrowseViewModel(private val repository: PhimBudRepository) : ViewModel() {
     private var nextPage: Int? = 1
     private var requestGeneration = 0L
     private var fetchJob: Job? = null
+    private var initialized = false
+    private val seenFids = HashSet<String>()
 
-    init {
-        loadNextPage()
+    fun ensureInitialized() {
+        if (!initialized) {
+            initialized = true
+            loadNextPage()
+        }
     }
 
     fun updateFilter(newFilter: BrowseFilter) {
+        initialized = true
         if (_filter.value == newFilter && (_movies.value.isNotEmpty() || _isLoading.value)) {
             return
         }
         fetchJob?.cancel()
         val generation = ++requestGeneration
+        seenFids.clear()
         _filter.value = newFilter
         nextPage = 1
         _movies.value = emptyList()
@@ -81,15 +88,20 @@ class BrowseViewModel(private val repository: PhimBudRepository) : ViewModel() {
     }
 
     fun retry() {
+        initialized = true
         fetchJob?.cancel()
         val generation = ++requestGeneration
         val pageToLoad = nextPage ?: 1
+        if (pageToLoad == 1) {
+            seenFids.clear()
+        }
         _errorMessage.value = null
         _isLoading.value = false
         loadPageInternal(page = pageToLoad, filterSnapshot = _filter.value, generation = generation)
     }
 
     fun loadNextPage() {
+        initialized = true
         val pageToLoad = nextPage ?: return
         if (_isLoading.value) return
         if (_errorMessage.value != null && _movies.value.isEmpty()) return
@@ -110,9 +122,28 @@ class BrowseViewModel(private val repository: PhimBudRepository) : ViewModel() {
                     onSuccess = { pageResult ->
                         val incoming = pageResult.titles
                         if (page == 1) {
-                            _movies.value = incoming.distinctBy { it.fid }
+                            seenFids.clear()
+                            val unique = ArrayList<Movie>(incoming.size)
+                            for (m in incoming) {
+                                if (seenFids.add(m.fid)) {
+                                    unique.add(m)
+                                }
+                            }
+                            _movies.value = unique
                         } else if (incoming.isNotEmpty()) {
-                            _movies.value = (_movies.value + incoming).distinctBy { it.fid }
+                            val current = _movies.value
+                            val appended = ArrayList<Movie>(current.size + incoming.size)
+                            appended.addAll(current)
+                            var addedAny = false
+                            for (m in incoming) {
+                                if (seenFids.add(m.fid)) {
+                                    appended.add(m)
+                                    addedAny = true
+                                }
+                            }
+                            if (addedAny) {
+                                _movies.value = appended
+                            }
                         }
                         nextPage = if (incoming.isEmpty()) null else pageResult.nextPage
                     },

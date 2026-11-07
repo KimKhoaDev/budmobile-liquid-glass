@@ -3,17 +3,29 @@ package com.phimbud.mobile.core.model
 import androidx.compose.runtime.Immutable
 import com.phimbud.mobile.core.platform.utcYearFromEpochMillis
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 object SearchNormalizer {
 
     fun normalize(input: String): String {
-        if (input.isBlank()) return ""
+        if (input.isEmpty()) return ""
         val sb = StringBuilder(input.length)
+        var pendingSpace = false
         for (rawChar in input) {
             val ch = rawChar.lowercaseChar()
             val code = ch.code
-            if (code < 128) {
-                if (ch in 'a'..'z' || ch in '0'..'9' || ch == ' ') {
+            if (code <= 32) {
+                if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+                    if (sb.isNotEmpty()) {
+                        pendingSpace = true
+                    }
+                }
+            } else if (code < 128) {
+                if (ch in 'a'..'z' || ch in '0'..'9') {
+                    if (pendingSpace) {
+                        sb.append(' ')
+                        pendingSpace = false
+                    }
                     sb.append(ch)
                 }
             } else if (isCombiningMark(code)) {
@@ -22,11 +34,15 @@ object SearchNormalizer {
             } else {
                 val folded = foldToAsciiLower(ch)
                 if (folded != '\u0000') {
+                    if (pendingSpace) {
+                        sb.append(' ')
+                        pendingSpace = false
+                    }
                     sb.append(folded)
                 }
             }
         }
-        return sb.toString().trim()
+        return sb.toString()
     }
 
     private fun isCombiningMark(code: Int): Boolean {
@@ -74,17 +90,17 @@ data class Movie(
     val imdbRating: Double? = null,
     val genres: List<String> = emptyList()
 ) {
-    val displayTitle: String
-        get() = nameVi.ifBlank { nameEn }
+    @Transient
+    val displayTitle: String = nameVi.ifBlank { nameEn }
 
-    val posterUrl: String?
-        get() = tmdbPoster?.let { "https://image.tmdb.org/t/p/w342$it" }
+    @Transient
+    val posterUrl: String? = tmdbPoster?.let { "https://image.tmdb.org/t/p/w342$it" }
 
-    val posterLargeUrl: String?
-        get() = tmdbPoster?.let { "https://image.tmdb.org/t/p/w500$it" }
+    @Transient
+    val posterLargeUrl: String? = tmdbPoster?.let { "https://image.tmdb.org/t/p/w500$it" }
 
-    val backdropUrl: String?
-        get() = tmdbBackdrop?.let { "https://image.tmdb.org/t/p/w780$it" } ?: posterLargeUrl
+    @Transient
+    val backdropUrl: String? = tmdbBackdrop?.let { "https://image.tmdb.org/t/p/w780$it" } ?: posterLargeUrl
 }
 
 @Immutable
@@ -105,8 +121,8 @@ data class Episode(
     val airDate: String? = null,
     val tmdbPoster: String? = null
 ) {
-    val thumbnailUrl: String?
-        get() = tmdbPoster?.let { "https://image.tmdb.org/t/p/w300$it" }
+    @Transient
+    val thumbnailUrl: String? = tmdbPoster?.let { "https://image.tmdb.org/t/p/w300$it" }
 }
 
 @Immutable
@@ -136,8 +152,7 @@ data class WatchInfo(
     val lastCurrentTime: Int? = null,
     val durationSeconds: Double = 0.0
 ) {
-    val displayShowTitle: String
-        get() = showNameVi.ifBlank { showNameEn }
+    val displayShowTitle: String = showNameVi.ifBlank { showNameEn }
 }
 
 @Immutable
@@ -163,14 +178,11 @@ data class TitleDetail(
     val relatedTitles: List<Movie> = emptyList(),
     val year: Int = 0
 ) {
-    val displayTitle: String
-        get() = nameVi.ifBlank { nameEn }
+    val displayTitle: String = nameVi.ifBlank { nameEn }
 
-    val posterUrl: String?
-        get() = tmdbPoster?.let { "https://image.tmdb.org/t/p/w500$it" }
+    val posterUrl: String? = tmdbPoster?.let { "https://image.tmdb.org/t/p/w500$it" }
 
-    val backdropUrl: String?
-        get() = tmdbBackdrop?.let { "https://image.tmdb.org/t/p/w780$it" } ?: posterUrl
+    val backdropUrl: String? = tmdbBackdrop?.let { "https://image.tmdb.org/t/p/w780$it" } ?: posterUrl
 }
 
 @Immutable
@@ -201,11 +213,9 @@ data class SearchItem(
     val normalizedNameVi: String = SearchNormalizer.normalize(nameVi),
     val normalizedNameEn: String = SearchNormalizer.normalize(nameEn)
 ) {
-    val displayTitle: String
-        get() = nameVi.ifBlank { nameEn }
+    val displayTitle: String = nameVi.ifBlank { nameEn }
 
-    val posterUrl: String?
-        get() = tmdbPoster?.let { "https://image.tmdb.org/t/p/w342$it" }
+    val posterUrl: String? = tmdbPoster?.let { "https://image.tmdb.org/t/p/w342$it" }
 }
 
 @Immutable
@@ -437,7 +447,7 @@ object BrowseFilterOptions {
             it.value != null && SearchNormalizer.normalize(it.label) == normalizedInput
         }?.value?.let { return it }
 
-        return normalizedInput.replace(Regex("\\s+"), "-")
+        return normalizedInput.replace(' ', '-')
     }
 
     fun resolveYearFilterValue(year: Int, currentYear: Int = utcYearFromEpochMillis()): String? {

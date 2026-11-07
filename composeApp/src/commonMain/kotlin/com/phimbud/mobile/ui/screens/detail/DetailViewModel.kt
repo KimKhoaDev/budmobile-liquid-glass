@@ -19,7 +19,8 @@ sealed class DetailUiState {
         val detail: TitleDetail,
         val episodes: List<Episode>,
         val selectedSeason: Season?,
-        val isInWishlist: Boolean
+        val isInWishlist: Boolean,
+        val isEpisodesLoading: Boolean = false
     ) : DetailUiState()
     data class Error(val message: String) : DetailUiState()
 }
@@ -39,25 +40,37 @@ class DetailViewModel(
     }
 
     fun loadDetail() {
+        seasonJob?.cancel()
         viewModelScope.launch {
             _uiState.value = DetailUiState.Loading
             val res = repository.getTitleDetail(fid)
             if (res.isSuccess) {
                 val detail = res.getOrThrow()
                 val firstSeason = detail.seasons.firstOrNull()
-                val episodes = if (firstSeason != null) {
-                    repository.getSeasonEpisodes(firstSeason.fid).getOrDefault(emptyList())
-                } else {
-                    emptyList()
-                }
+                val cachedEpisodes = firstSeason?.let { repository.getCachedSeasonEpisodes(it.fid) }
+                val needsEpisodeFetch = firstSeason != null && cachedEpisodes == null
 
                 val initialWishlist = repository.isInWishlist(detail.fid) || repository.isInWishlist(fid)
                 _uiState.value = DetailUiState.Success(
                     detail = detail,
-                    episodes = episodes,
+                    episodes = cachedEpisodes.orEmpty(),
                     selectedSeason = firstSeason,
-                    isInWishlist = initialWishlist
+                    isInWishlist = initialWishlist,
+                    isEpisodesLoading = needsEpisodeFetch
                 )
+
+                if (needsEpisodeFetch) {
+                    seasonJob = viewModelScope.launch {
+                        val episodesRes = repository.getSeasonEpisodes(firstSeason.fid)
+                        val latest = _uiState.value as? DetailUiState.Success ?: return@launch
+                        if (latest.selectedSeason?.fid == firstSeason.fid) {
+                            _uiState.value = latest.copy(
+                                episodes = episodesRes.getOrDefault(emptyList()),
+                                isEpisodesLoading = false
+                            )
+                        }
+                    }
+                }
 
                 // Sync authoritative wishlist state with server
                 viewModelScope.launch {
@@ -82,15 +95,29 @@ class DetailViewModel(
 
     fun selectSeason(season: Season) {
         val current = _uiState.value as? DetailUiState.Success ?: return
-        if (current.selectedSeason?.fid == season.fid) return
-        _uiState.value = current.copy(selectedSeason = season)
+        if (current.selectedSeason?.fid == season.fid && current.episodes.isNotEmpty()) return
+        val cachedEpisodes = repository.getCachedSeasonEpisodes(season.fid)
+        if (cachedEpisodes != null) {
+            seasonJob?.cancel()
+            _uiState.value = current.copy(
+                selectedSeason = season,
+                episodes = cachedEpisodes,
+                isEpisodesLoading = false
+            )
+            return
+        }
+        _uiState.value = current.copy(
+            selectedSeason = season,
+            isEpisodesLoading = true
+        )
         seasonJob?.cancel()
         seasonJob = viewModelScope.launch {
             val episodesRes = repository.getSeasonEpisodes(season.fid)
             val latest = _uiState.value as? DetailUiState.Success ?: return@launch
             if (latest.selectedSeason?.fid == season.fid) {
                 _uiState.value = latest.copy(
-                    episodes = episodesRes.getOrDefault(emptyList())
+                    episodes = episodesRes.getOrDefault(emptyList()),
+                    isEpisodesLoading = false
                 )
             }
         }

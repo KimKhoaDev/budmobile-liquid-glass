@@ -68,6 +68,14 @@ import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 
+private val DetailBackdropGradient = Brush.verticalGradient(
+    colors = listOf(
+        Color.Black.copy(alpha = 0.5f),
+        Color.Transparent,
+        NetflixBlack
+    )
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DetailScreen(
@@ -121,7 +129,7 @@ fun DetailScreen(
                 }
 
                 LazyColumn(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
-                    item {
+                    item(key = "detail_backdrop", contentType = "backdrop") {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -137,15 +145,7 @@ fun DetailScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Black.copy(alpha = 0.5f),
-                                                Color.Transparent,
-                                                NetflixBlack
-                                            )
-                                        )
-                                    )
+                                    .background(DetailBackdropGradient)
                             )
 
                             IconButton(
@@ -164,7 +164,7 @@ fun DetailScreen(
                         }
                     }
 
-                    item {
+                    item(key = "detail_metadata", contentType = "metadata") {
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                             Text(
                                 text = detail.displayTitle,
@@ -393,7 +393,7 @@ fun DetailScreen(
                     }
 
                     if (detail.seasons.isNotEmpty()) {
-                        item {
+                        item(key = "detail_seasons_header", contentType = "seasons_header") {
                             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                                 Text(
                                     text = "Các tập phim",
@@ -436,21 +436,38 @@ fun DetailScreen(
                             }
                         }
 
-                        items(
-                            items = state.episodes,
-                            key = { it.fid },
-                            contentType = { "episode_item" }
-                        ) { episode ->
-                            EpisodeItem(
-                                episode = episode,
-                                onClick = { onPlayClick(episode.fid) },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                            )
+                        if (state.isEpisodesLoading && state.episodes.isEmpty()) {
+                            item(key = "detail_episodes_loading", contentType = "episodes_loading") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = NetflixRed,
+                                        modifier = Modifier.size(28.dp),
+                                        strokeWidth = 2.5.dp
+                                    )
+                                }
+                            }
+                        } else {
+                            items(
+                                items = state.episodes,
+                                key = { it.fid },
+                                contentType = { "episode_item" }
+                            ) { episode ->
+                                EpisodeItem(
+                                    episode = episode,
+                                    onClick = { onPlayClick(episode.fid) },
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                )
+                            }
                         }
                     }
 
                     if (detail.relatedTitles.isNotEmpty()) {
-                        item {
+                        item(key = "detail_related", contentType = "related_row") {
                             Spacer(modifier = Modifier.height(16.dp))
                             MovieRow(
                                 title = "Nội dung tương tự",

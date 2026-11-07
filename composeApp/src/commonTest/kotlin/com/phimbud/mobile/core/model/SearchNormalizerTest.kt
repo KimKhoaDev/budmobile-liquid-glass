@@ -1,5 +1,7 @@
 package com.phimbud.mobile.core.model
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -57,5 +59,38 @@ class SearchNormalizerTest {
         assertTrue(item.normalizedNameVi.contains(SearchNormalizer.normalize("con mực")))
         assertTrue(item.normalizedNameVi.contains(SearchNormalizer.normalize("con muc")))
         assertTrue(item.normalizedNameEn.contains(SearchNormalizer.normalize("SQUID GAME")))
+    }
+
+    @Test
+    fun testNormalizeCollapsesMultipleWhitespaceAndPunctuationGapsSinglePass() {
+        assertEquals(
+            "one piece dao hai tac 2024",
+            SearchNormalizer.normalize("   One    Piece  :   Đảo   Hải\t\nTặc  ---  (2024)   ")
+        )
+    }
+
+    @Test
+    fun testMovieTransientComputedUrlsSurviveJsonSerializationRoundtrip() {
+        val original = Movie(
+            fid = "m1",
+            nameEn = "Dune: Part Two",
+            nameVi = "Hành Tinh Cát: Phần Hai",
+            tmdbPoster = "/poster.jpg",
+            tmdbBackdrop = "/backdrop.jpg",
+            year = 2024
+        )
+        val wrapper = Top10Lists(
+            updatedAtEpochMs = 123456L,
+            vnMovies = listOf(original),
+            vnAll = listOf(original)
+        )
+        val encoded = Json.encodeToString(wrapper)
+        val decoded = Json.decodeFromString<Top10Lists>(encoded)
+        val restored = decoded.vnMovies.single()
+
+        assertEquals("Hành Tinh Cát: Phần Hai", restored.displayTitle)
+        assertEquals("https://image.tmdb.org/t/p/w342/poster.jpg", restored.posterUrl)
+        assertEquals("https://image.tmdb.org/t/p/w500/poster.jpg", restored.posterLargeUrl)
+        assertEquals("https://image.tmdb.org/t/p/w780/backdrop.jpg", restored.backdropUrl)
     }
 }

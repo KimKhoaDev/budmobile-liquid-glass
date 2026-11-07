@@ -69,6 +69,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -170,9 +171,16 @@ fun PlayerScreen(
         }
     }
 
-    // Load or update HLS stream & subtitle when Ready state changes
-    LaunchedEffect(uiState) {
-        val ready = uiState as? PlayerUiState.Ready ?: return@LaunchedEffect
+    val readyState = uiState as? PlayerUiState.Ready
+
+    // Load or update HLS stream & subtitle only when actual media/subtitle inputs change
+    LaunchedEffect(
+        readyState?.watchInfo?.fid,
+        readyState?.m3u8Url,
+        readyState?.activeSubtitleData?.path,
+        readyState?.activeSubtitle?.language
+    ) {
+        val ready = readyState ?: return@LaunchedEffect
         val knownDurationMs = (ready.watchInfo.durationSeconds * 1000.0).toLong().coerceAtLeast(0L)
         val rawResumePosMs = ready.watchInfo.lastCurrentTime?.times(1000L) ?: 0L
         val resumePosMs = if (knownDurationMs > 30_000L && rawResumePosMs >= knownDurationMs - 15_000L) {
@@ -190,8 +198,6 @@ fun PlayerScreen(
             subtitleLanguage = activeLang
         )
     }
-
-    val readyState = uiState as? PlayerUiState.Ready
     val hasEpisodesList = readyState?.let {
         it.watchInfo.seasonFid.isNotBlank() ||
             it.watchInfo.showFid.isNotBlank() ||
@@ -1296,10 +1302,15 @@ private fun PlayerBottomBar(
     }
 
     // Only show manual backup skip if NO auto-detected Intro exists, hasn't been clicked yet, and within first 90s
-    val hasAutoIntro = skipSegments.any { it.type == SkipSegmentType.INTRO }
+    val hasAutoIntro = remember(skipSegments) {
+        skipSegments.any { it.type == SkipSegmentType.INTRO }
+    }
+    val isWithinIntroWindow by remember {
+        derivedStateOf { currentPosition in 0L..90_000L }
+    }
     val showQuickSkip85s = !hasAutoIntro &&
         !hasManuallySkipped &&
-        currentPosition in 0L..90_000L &&
+        isWithinIntroWindow &&
         duration > 180_000L
 
     Column(modifier = modifier) {

@@ -3,8 +3,10 @@
 package com.phimbud.mobile.core.platform
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
+import coil3.ImageLoader
 import okio.FileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSDate
@@ -18,6 +20,14 @@ import platform.UIKit.UIStatusBarStyleLightContent
 import platform.UIKit.setStatusBarStyle
 
 actual class PlatformContext()
+
+private fun resolveIosCachesRoot(): Path {
+    return (NSSearchPathForDirectoriesInDomains(
+        NSCachesDirectory,
+        NSUserDomainMask,
+        true
+    ).firstOrNull() as? String)?.toPath() ?: FileSystem.SYSTEM_TEMPORARY_DIRECTORY
+}
 
 actual class KeyValueStore actual constructor(
     context: PlatformContext,
@@ -63,16 +73,7 @@ actual class KeyValueStore actual constructor(
 
 actual class SubtitleCache actual constructor(context: PlatformContext) {
     private val fs = FileSystem.SYSTEM
-    private val dir = run {
-        val cachesPath = (NSSearchPathForDirectoriesInDomains(
-            NSCachesDirectory,
-            NSUserDomainMask,
-            true
-        ).firstOrNull() as? String)?.toPath() ?: FileSystem.SYSTEM_TEMPORARY_DIRECTORY
-        (cachesPath / "subtitles").also { path ->
-            runCatching { fs.createDirectories(path) }
-        }
-    }
+    private val dir: Path by lazy { resolveIosCachesRoot() / "subtitles" }
 
     actual fun readIfCached(cacheFileName: String): CachedSubtitle? {
         val file = dir / cacheFileName
@@ -104,6 +105,74 @@ actual class SubtitleCache actual constructor(context: PlatformContext) {
     }
 }
 
+actual class CatalogIndexCache actual constructor(context: PlatformContext) {
+    private val fs = FileSystem.SYSTEM
+    private val dir: Path by lazy { resolveIosCachesRoot() / "catalog_index" }
+
+    private fun sanitizeFileName(timeKey: String): String {
+        return timeKey.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+    }
+
+    actual fun readExact(timeKey: String): String? {
+        val file = dir / sanitizeFileName(timeKey)
+        if (!fs.exists(file)) return null
+        return runCatching { fs.read(file) { readUtf8() } }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    actual fun readLatestFallback(): String? {
+        if (!fs.exists(dir)) return null
+        val candidates = runCatching { fs.list(dir) }.getOrNull()
+            ?.filter { !it.name.endsWith(".tmp") }
+            ?: return null
+        val latest = candidates.maxByOrNull { path ->
+            runCatching { fs.metadataOrNull(path)?.lastModifiedAtMillis ?: 0L }.getOrDefault(0L)
+        } ?: return null
+        return runCatching { fs.read(latest) { readUtf8() } }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    actual fun write(timeKey: String, content: String) {
+        runCatching {
+            fs.createDirectories(dir)
+            val safeName = sanitizeFileName(timeKey)
+            val target = dir / safeName
+            val tmp = dir / "$safeName.tmp"
+            fs.write(tmp) { writeUtf8(content) }
+            runCatching {
+                fs.atomicMove(tmp, target)
+            }.onFailure {
+                fs.write(target) { writeUtf8(content) }
+                runCatching { fs.delete(tmp) }
+            }
+            fs.list(dir).forEach { existing ->
+                if (existing.name != safeName) {
+                    runCatching { fs.delete(existing) }
+                }
+            }
+        }
+    }
+
+    actual fun clear() {
+        runCatching {
+            if (fs.exists(dir)) {
+                fs.list(dir).forEach { runCatching { fs.delete(it) } }
+            }
+        }
+    }
+}
+
+actual fun platformImageCacheDirectory(context: PlatformContext): Path {
+    return resolveIosCachesRoot() / "phimbud_image_cache"
+}
+
+actual fun configurePlatformImageLoader(
+    builder: ImageLoader.Builder,
+    context: PlatformContext
+): ImageLoader.Builder = builder
+
 actual fun currentTimeMillis(): Long {
     return (NSDate().timeIntervalSince1970 * 1000.0).toLong()
 }
@@ -120,7 +189,7 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 
 @Composable
 actual fun PlatformSystemBarsEffect() {
-    SideEffect {
+    LaunchedEffect(Unit) {
         UIApplication.sharedApplication.setStatusBarStyle(UIStatusBarStyleLightContent, animated = true)
     }
 }

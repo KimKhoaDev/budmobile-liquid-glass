@@ -153,4 +153,22 @@ class IntroRecapDetectorTest {
         val segments = IntroRecapDetector.detectFromSrt(srt, isEpisode = true)
         assertTrue(segments.isEmpty())
     }
+
+    @Test
+    fun parseCuesHandlesBomCrlfAndStopsScanningPastAnalysisCutoff() {
+        val srt = "\uFEFF1\r\n" +
+            "00:00:05,000 --> 00:00:09,000\r\n" +
+            "Dòng thoại đầu tiên\r\n" +
+            "Dòng thoại thứ hai\r\n\r\n" +
+            "2\r\n" +
+            "00:08:30,000 --> 00:08:35,000\r\n" +
+            "Thoại sau phút thứ 8 không cần phân tích\r\n\r\n" +
+            "3\r\n" +
+            "00:25:00,000 --> 00:25:04,000\r\n" +
+            "Thoại giữa tập\r\n"
+
+        val cues = IntroRecapDetector.parseCues(srt)
+        assertEquals(1, cues.size)
+        assertEquals("Dòng thoại đầu tiên\nDòng thoại thứ hai", cues[0].rawText)
+    }
 }

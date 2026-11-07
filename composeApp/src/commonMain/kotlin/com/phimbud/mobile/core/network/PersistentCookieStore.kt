@@ -36,20 +36,32 @@ class PersistentCookieStore(context: PlatformContext) {
         val now = currentTimeMillis()
         val normalizedDomain = cookie.domain.trim().trimStart('.').lowercase()
         val key = "$normalizedDomain|${cookie.name}"
-        val next = LinkedHashMap(memoryCookies)
 
         if (cookie.value.isEmpty() || cookie.expiresAt < now) {
+            if (!memoryCookies.containsKey(key)) return
+            val next = LinkedHashMap(memoryCookies)
             next.remove(key)
             store.remove(key)
+            memoryCookies = next
         } else {
             val normalized = cookie.copy(domain = normalizedDomain)
+            val existing = memoryCookies[key]
+            if (existing != null &&
+                existing.value == normalized.value &&
+                existing.domain == normalized.domain &&
+                existing.path == normalized.path &&
+                kotlin.math.abs(existing.expiresAt - normalized.expiresAt) < 60_000L
+            ) {
+                return
+            }
+            val next = LinkedHashMap(memoryCookies)
             next[key] = normalized
             store.putString(
                 key,
                 "${normalized.name}=${normalized.value}; domain=${normalized.domain}; path=${normalized.path}; expiresAt=${normalized.expiresAt}"
             )
+            memoryCookies = next
         }
-        memoryCookies = next
     }
 
     fun saveFromSetCookieHeaders(requestHost: String, setCookieHeaders: List<String>) {

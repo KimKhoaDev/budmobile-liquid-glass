@@ -88,19 +88,21 @@ object SrtParser {
         if (candidate == -1) return null
 
         // Check candidate and at most 2 preceding cues in case of overlapping dialogue lines
-        val matched = ArrayList<String>(2)
+        var firstMatch: String? = null
+        var extraBuilder: StringBuilder? = null
         val minIdx = (candidate - 2).coerceAtLeast(0)
         for (idx in minIdx..candidate) {
             val cue = cues[idx]
             if (positionMs in cue.startMs..cue.endMs) {
-                matched.add(cue.text)
+                if (firstMatch == null) {
+                    firstMatch = cue.text
+                } else {
+                    val sb = extraBuilder ?: StringBuilder(firstMatch).also { extraBuilder = it }
+                    sb.append('\n').append(cue.text)
+                }
             }
         }
-        return when (matched.size) {
-            0 -> null
-            1 -> matched[0]
-            else -> matched.joinToString("\n")
-        }
+        return extraBuilder?.toString() ?: firstMatch
     }
 
     internal fun parseTimestampMs(raw: String): Long {

@@ -55,10 +55,7 @@ class Top10Service(private val publicHttpClient: HttpClient) {
 
         private const val PER_SOURCE_TIMEOUT_MS = 9_000L
 
-        private val tudumRowRegex = Regex(
-            """data-uia=["']top10-table-row-title["'][^>]*>.*?<button[^>]*>(.*?)</button>""",
-            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
-        )
+        private const val TUDUM_MARKER = "top10-table-row-title"
         private val htmlTagStripRegex = Regex("""<[^>]+>""")
         private val hexEntityRegex = Regex("""&#x([0-9a-fA-F]+);""")
         private val decEntityRegex = Regex("""&#(\d+);""")
@@ -71,13 +68,42 @@ class Top10Service(private val publicHttpClient: HttpClient) {
         fun parseTudumHtml(html: String): List<String> {
             if (html.isBlank()) return emptyList()
             val results = ArrayList<String>(10)
-            for (match in tudumRowRegex.findAll(html)) {
-                val rawInner = match.groupValues[1]
-                val stripped = htmlTagStripRegex.replace(rawInner, "")
-                val clean = unescapeHtmlEntities(stripped).trim()
-                if (clean.isNotBlank()) {
-                    results.add(clean)
+            var searchFrom = 0
+            val len = html.length
+
+            while (searchFrom < len) {
+                val markerIdx = html.indexOf(TUDUM_MARKER, searchFrom, ignoreCase = true)
+                if (markerIdx < 0) break
+
+                val cellCloseIdx = html.indexOf("</td>", markerIdx, ignoreCase = true)
+                val windowEnd = if (cellCloseIdx != -1) {
+                    minOf(cellCloseIdx, markerIdx + 4096)
+                } else {
+                    minOf(len, markerIdx + 2048)
                 }
+
+                val btnOpenIdx = html.indexOf("<button", markerIdx, ignoreCase = true)
+                if (btnOpenIdx in markerIdx until windowEnd) {
+                    val btnTagEnd = html.indexOf('>', btnOpenIdx + 7)
+                    if (btnTagEnd in (btnOpenIdx + 7) until windowEnd) {
+                        val btnCloseIdx = html.indexOf("</button>", btnTagEnd + 1, ignoreCase = true)
+                        if (btnCloseIdx in (btnTagEnd + 1)..windowEnd) {
+                            val rawInner = html.substring(btnTagEnd + 1, btnCloseIdx)
+                            val stripped = if (rawInner.indexOf('<') >= 0) {
+                                htmlTagStripRegex.replace(rawInner, "")
+                            } else {
+                                rawInner
+                            }
+                            val clean = unescapeHtmlEntities(stripped).trim()
+                            if (clean.isNotBlank()) {
+                                results.add(clean)
+                            }
+                            searchFrom = btnCloseIdx + 9
+                            continue
+                        }
+                    }
+                }
+                searchFrom = markerIdx + TUDUM_MARKER.length
             }
             return results
         }

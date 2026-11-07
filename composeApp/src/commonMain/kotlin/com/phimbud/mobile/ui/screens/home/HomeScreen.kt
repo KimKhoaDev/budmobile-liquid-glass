@@ -57,6 +57,14 @@ import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 
+private val HomeHeaderGradient = Brush.verticalGradient(
+    colors = listOf(
+        NetflixBlack.copy(alpha = 0.92f),
+        NetflixBlack.copy(alpha = 0.68f),
+        Color.Transparent
+    )
+)
+
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -335,15 +343,7 @@ fun HomeScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    NetflixBlack.copy(alpha = 0.92f),
-                                    NetflixBlack.copy(alpha = 0.68f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
+                        .background(HomeHeaderGradient)
                         .statusBarsPadding()
                         .padding(bottom = 10.dp)
                 ) {

@@ -39,13 +39,17 @@ object SubtitleCipher {
 
     fun decrypt(fileName: String, base64Ciphertext: String): String {
         val keyBytes = deriveAesKey(fileName)
-        val raw = UrlCipher.base64Decode(base64Ciphertext.trim())
+        val raw = UrlCipher.base64Decode(base64Ciphertext)
         require(raw.size >= 28) { "Invalid subtitle payload size: ${raw.size}" }
 
         val iv = raw.copyOfRange(0, 12)
-        val ciphertextWithTag = raw.copyOfRange(12, raw.size)
-
-        val decryptedBytes = AesGcm256.decrypt(keyBytes, iv, ciphertextWithTag)
+        val decryptedBytes = AesGcm256.decrypt(
+            key = keyBytes,
+            iv = iv,
+            ciphertextWithTag = raw,
+            inputOffset = 12,
+            inputLength = raw.size - 12
+        )
         var rawText = decryptedBytes.decodeToString()
         if (rawText.startsWith("\uFEFF")) {
             rawText = rawText.substring(1)

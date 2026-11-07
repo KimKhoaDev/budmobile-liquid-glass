@@ -11,9 +11,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -29,14 +31,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.UIKitView
 import com.phimbud.mobile.core.crypto.SrtParser
+import com.phimbud.mobile.core.crypto.SubtitleCue
 import com.phimbud.mobile.core.platform.CachedSubtitle
 import com.phimbud.mobile.core.platform.logError
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.setActive
@@ -423,14 +428,19 @@ actual fun PlatformVideoSurface(
         }
     }
 
-    val parsedCues = remember(activeSubtitle?.path, activeSubtitle?.content) {
-        activeSubtitle?.content?.let { SrtParser.parse(it) } ?: emptyList()
-    }
-
-    val activeCueText = if (parsedCues.isNotEmpty()) {
-        SrtParser.findActiveText(parsedCues, iosController.livePositionMs)
-    } else {
-        null
+    val parsedCues by produceState(
+        initialValue = emptyList<SubtitleCue>(),
+        key1 = activeSubtitle?.path,
+        key2 = activeSubtitle?.content
+    ) {
+        val raw = activeSubtitle?.content
+        value = if (raw.isNullOrBlank()) {
+            emptyList()
+        } else {
+            withContext(Dispatchers.Default) {
+                SrtParser.parse(raw)
+            }
+        }
     }
 
     Box(modifier = modifier) {
@@ -445,31 +455,55 @@ actual fun PlatformVideoSurface(
             modifier = Modifier.fillMaxSize()
         )
 
-        if (!activeCueText.isNullOrBlank()) {
-            val bottomPad = if (controlsVisible) 88.dp else 26.dp
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(start = 32.dp, end = 32.dp, bottom = bottomPad)
-                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 12.dp, vertical = 5.dp)
-            ) {
-                Text(
-                    text = activeCueText,
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 24.sp,
-                    style = TextStyle(
-                        shadow = Shadow(
-                            color = Color.Black,
-                            offset = Offset(1.5f, 1.5f),
-                            blurRadius = 4f
-                        )
-                    )
-                )
-            }
+        if (parsedCues.isNotEmpty()) {
+            IosSubtitleOverlay(
+                iosController = iosController,
+                parsedCues = parsedCues,
+                controlsVisible = controlsVisible,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+}
+
+private val IosSubtitleTextStyle = TextStyle(
+    shadow = Shadow(
+        color = Color.Black,
+        offset = Offset(1.5f, 1.5f),
+        blurRadius = 4f
+    )
+)
+
+@Composable
+private fun IosSubtitleOverlay(
+    iosController: IosAvPlayerController,
+    parsedCues: List<SubtitleCue>,
+    controlsVisible: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val activeCueText by remember(iosController, parsedCues) {
+        derivedStateOf {
+            SrtParser.findActiveText(parsedCues, iosController.livePositionMs)
+        }
+    }
+
+    if (!activeCueText.isNullOrBlank()) {
+        val bottomPad = if (controlsVisible) 88.dp else 26.dp
+        Box(
+            modifier = modifier
+                .padding(start = 32.dp, end = 32.dp, bottom = bottomPad)
+                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 12.dp, vertical = 5.dp)
+        ) {
+            Text(
+                text = activeCueText.orEmpty(),
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                lineHeight = 24.sp,
+                style = IosSubtitleTextStyle
+            )
         }
     }
 }

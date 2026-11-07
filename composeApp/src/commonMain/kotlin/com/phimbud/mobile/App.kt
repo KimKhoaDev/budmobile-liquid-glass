@@ -26,9 +26,12 @@ import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
+import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.crossfade
 import com.phimbud.mobile.core.model.BrowseFilter
 import com.phimbud.mobile.core.platform.PlatformBackHandler
+import com.phimbud.mobile.core.platform.configurePlatformImageLoader
+import com.phimbud.mobile.core.platform.platformImageCacheDirectory
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import com.phimbud.mobile.ui.components.BottomNavBar
 import com.phimbud.mobile.ui.screens.browse.BrowseScreen
@@ -55,7 +58,17 @@ fun App(
     onPlayerScreenActiveChanged: (Boolean) -> Unit = {}
 ) {
     setSingletonImageLoaderFactory { context ->
-        ImageLoader.Builder(context)
+        configurePlatformImageLoader(
+            ImageLoader.Builder(context),
+            repository.platformContext
+        )
+            .components {
+                add(
+                    KtorNetworkFetcherFactory(
+                        httpClient = { repository.apiClient.httpEngine.publicHttpClient }
+                    )
+                )
+            }
             .memoryCache {
                 MemoryCache.Builder()
                     .maxSizePercent(context, 0.25)
@@ -64,7 +77,7 @@ fun App(
             .diskCache {
                 DiskCache.Builder()
                     .fileSystem(FileSystem.SYSTEM)
-                    .directory(FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "phimbud_image_cache")
+                    .directory(platformImageCacheDirectory(repository.platformContext))
                     .maxSizeBytes(100L * 1024L * 1024L) // 100 MB
                     .build()
             }
@@ -154,6 +167,9 @@ fun App(
                                     )
                                 }
                                 "browse" -> {
+                                    LaunchedEffect(Unit) {
+                                        browseVm.ensureInitialized()
+                                    }
                                     BrowseScreen(
                                         viewModel = browseVm,
                                         onMovieClick = { movie ->

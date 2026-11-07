@@ -7,7 +7,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -22,25 +21,60 @@ object DevalueCodec {
         isLenient = true
     }
 
+    private const val NO_POOL_INDEX = Int.MIN_VALUE
+
+    private fun parsePoolIndexOrSentinel(elem: JsonElement): Int {
+        if (elem !is JsonPrimitive || elem.isString) return NO_POOL_INDEX
+        val s = elem.content
+        val len = s.length
+        if (len == 0 || len > 11) return NO_POOL_INDEX
+
+        var neg = false
+        var idx = 0
+        val first = s[0]
+        if (first == '-') {
+            if (len == 1) return NO_POOL_INDEX
+            neg = true
+            idx = 1
+        } else if (first !in '0'..'9') {
+            return NO_POOL_INDEX
+        }
+
+        var acc = 0L
+        while (idx < len) {
+            val c = s[idx]
+            if (c !in '0'..'9') return NO_POOL_INDEX
+            acc = acc * 10L + (c.code - '0'.code)
+            if (acc > Int.MAX_VALUE.toLong()) return NO_POOL_INDEX
+            idx++
+        }
+        return if (neg) (-acc).toInt() else acc.toInt()
+    }
+
     /**
-     * Resolves a flattened SvelteKit devalue array into a regular tree-like JsonElement.
+     * Resolves a flattened SvelteKit devalue array into a regular tree-like JsonElement
+     * using primitive arrays (zero Int boxing or HashMap hashing).
      */
     fun unflatten(pool: JsonArray, rootIndex: Int = 0): JsonElement {
-        val resolved = mutableMapOf<Int, JsonElement>()
-        val resolving = mutableSetOf<Int>()
+        val poolSize = pool.size
+        if (poolSize == 0) return JsonNull
+
+        val resolved = arrayOfNulls<JsonElement>(poolSize)
+        val resolving = BooleanArray(poolSize)
 
         fun resolve(index: Int): JsonElement {
             if (index < 0) {
                 return when (index) {
-                    -1 -> JsonNull
+                    -1, -2, -3, -4, -5 -> JsonNull
+                    -6 -> JsonPrimitive(0)
                     else -> JsonPrimitive(index)
                 }
             }
-            if (index >= pool.size) return JsonNull
-            if (index in resolved) return resolved[index]!!
-            if (index in resolving) return JsonNull // break circular reference
+            if (index >= poolSize) return JsonNull
+            resolved[index]?.let { return it }
+            if (resolving[index]) return JsonNull // break circular reference
 
-            resolving.add(index)
+            resolving[index] = true
             val item = pool[index]
             val result: JsonElement = when (item) {
                 is JsonPrimitive -> item
@@ -49,31 +83,25 @@ object DevalueCodec {
                     if (item.size == 2 && item[0] is JsonPrimitive && item[0].jsonPrimitive.content == "Date") {
                         item[1]
                     } else {
-                        val elements = item.map { elem ->
-                            if (elem is JsonPrimitive && !elem.isString && elem.booleanOrNull == null) {
-                                val targetIdx = elem.content.toIntOrNull()
-                                if (targetIdx != null) resolve(targetIdx) else elem
-                            } else {
-                                elem
-                            }
+                        val list = ArrayList<JsonElement>(item.size)
+                        for (i in 0 until item.size) {
+                            val elem = item[i]
+                            val targetIdx = parsePoolIndexOrSentinel(elem)
+                            list.add(if (targetIdx != NO_POOL_INDEX) resolve(targetIdx) else elem)
                         }
-                        JsonArray(elements)
+                        JsonArray(list)
                     }
                 }
                 is JsonObject -> {
-                    val map = mutableMapOf<String, JsonElement>()
+                    val map = LinkedHashMap<String, JsonElement>(item.size)
                     for ((k, v) in item) {
-                        val targetIdx = if (v is JsonPrimitive && !v.isString && v.booleanOrNull == null) {
-                            v.content.toIntOrNull()
-                        } else null
-
-                        map[k] = if (targetIdx != null) resolve(targetIdx) else v
+                        val targetIdx = parsePoolIndexOrSentinel(v)
+                        map[k] = if (targetIdx != NO_POOL_INDEX) resolve(targetIdx) else v
                     }
                     JsonObject(map)
                 }
-                else -> JsonNull
             }
-            resolving.remove(index)
+            resolving[index] = false
             resolved[index] = result
             return result
         }

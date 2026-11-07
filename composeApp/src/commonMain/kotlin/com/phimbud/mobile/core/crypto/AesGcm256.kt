@@ -29,13 +29,22 @@ object AesGcm256 {
         0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
     )
 
-    fun decrypt(key: ByteArray, iv: ByteArray, ciphertextWithTag: ByteArray): ByteArray {
+    fun decrypt(
+        key: ByteArray,
+        iv: ByteArray,
+        ciphertextWithTag: ByteArray,
+        inputOffset: Int = 0,
+        inputLength: Int = ciphertextWithTag.size - inputOffset
+    ): ByteArray {
         require(key.size == 32) { "AES-256 key must be 32 bytes, got ${key.size}" }
         require(iv.size == 12) { "GCM IV must be 12 bytes, got ${iv.size}" }
-        require(ciphertextWithTag.size >= 16) { "Ciphertext with tag must be at least 16 bytes" }
+        require(inputOffset >= 0 && inputLength >= 16 && inputOffset + inputLength <= ciphertextWithTag.size) {
+            "Ciphertext slice must be valid and at least 16 bytes"
+        }
 
         val roundKeys = expandKey256(key)
-        val cipherLen = ciphertextWithTag.size - 16
+        val cipherLen = inputLength - 16
+        val cipherEnd = inputOffset + cipherLen
 
         // 1. Hash subkey H = AES_K(0^128)
         val zeroBlock = ByteArray(16)
@@ -51,38 +60,39 @@ object AesGcm256 {
         val tagMask = ByteArray(16)
         encryptBlock(roundKeys, j0, 0, tagMask, 0)
 
-        // 3. GHASH_H(AAD = empty, C = ciphertextWithTag[0 until cipherLen])
+        // 3. GHASH_H(AAD = empty, C = ciphertextWithTag[inputOffset until cipherEnd])
         var yHi = 0L
         var yLo = 0L
         val partial = ByteArray(16)
+        val ghashOut = LongArray(2)
 
-        var offset = 0
-        while (offset + 16 <= cipherLen) {
+        var offset = inputOffset
+        while (offset + 16 <= cipherEnd) {
             yHi = yHi xor readBigEndianLong(ciphertextWithTag, offset)
             yLo = yLo xor readBigEndianLong(ciphertextWithTag, offset + 8)
-            val prodHiLo = ghashMultiply(yHi, yLo, hHi, hLo)
-            yHi = prodHiLo.first
-            yLo = prodHiLo.second
+            ghashMultiply(yHi, yLo, hHi, hLo, ghashOut)
+            yHi = ghashOut[0]
+            yLo = ghashOut[1]
             offset += 16
         }
 
-        val rem = cipherLen - offset
+        val rem = cipherEnd - offset
         if (rem > 0) {
             partial.fill(0)
-            ciphertextWithTag.copyInto(partial, 0, offset, cipherLen)
+            ciphertextWithTag.copyInto(partial, 0, offset, cipherEnd)
             yHi = yHi xor readBigEndianLong(partial, 0)
             yLo = yLo xor readBigEndianLong(partial, 8)
-            val prodHiLo = ghashMultiply(yHi, yLo, hHi, hLo)
-            yHi = prodHiLo.first
-            yLo = prodHiLo.second
+            ghashMultiply(yHi, yLo, hHi, hLo, ghashOut)
+            yHi = ghashOut[0]
+            yLo = ghashOut[1]
         }
 
         // Length block: [len(AAD)_bits = 0 (64-bit) || len(C)_bits (64-bit)]
         val cipherBits = cipherLen.toLong() * 8L
         yLo = yLo xor cipherBits
-        val finalProd = ghashMultiply(yHi, yLo, hHi, hLo)
-        yHi = finalProd.first
-        yLo = finalProd.second
+        ghashMultiply(yHi, yLo, hHi, hLo, ghashOut)
+        yHi = ghashOut[0]
+        yLo = ghashOut[1]
 
         val computedTag = ByteArray(16)
         writeBigEndianLong(yHi xor readBigEndianLong(tagMask, 0), computedTag, 0)
@@ -91,7 +101,7 @@ object AesGcm256 {
         // Constant-time authentication tag verification
         var diff = 0
         for (i in 0 until 16) {
-            diff = diff or ((computedTag[i].toInt() xor ciphertextWithTag[cipherLen + i].toInt()) and 0xFF)
+            diff = diff or ((computedTag[i].toInt() xor ciphertextWithTag[cipherEnd + i].toInt()) and 0xFF)
         }
         if (diff != 0) {
             throw IllegalArgumentException("AES-GCM authentication tag verification failed")
@@ -114,8 +124,9 @@ object AesGcm256 {
 
             encryptBlock(roundKeys, counterBlock, 0, keystream, 0)
             val chunk = minOf(16, cipherLen - pos)
+            val srcBase = inputOffset + pos
             for (j in 0 until chunk) {
-                plaintext[pos + j] = (ciphertextWithTag[pos + j].toInt() xor keystream[j].toInt()).toByte()
+                plaintext[pos + j] = (ciphertextWithTag[srcBase + j].toInt() xor keystream[j].toInt()).toByte()
             }
             pos += chunk
             blockIndex++
@@ -124,7 +135,7 @@ object AesGcm256 {
         return plaintext
     }
 
-    private fun ghashMultiply(xHi: Long, xLo: Long, hHi: Long, hLo: Long): Pair<Long, Long> {
+    private fun ghashMultiply(xHi: Long, xLo: Long, hHi: Long, hLo: Long, outHiLo: LongArray) {
         var zHi = 0L
         var zLo = 0L
         var vHi = hHi
@@ -155,7 +166,8 @@ object AesGcm256 {
                 vHi = vHi xor polyR
             }
         }
-        return Pair(zHi, zLo)
+        outHiLo[0] = zHi
+        outHiLo[1] = zLo
     }
 
     private fun expandKey256(key: ByteArray): IntArray {

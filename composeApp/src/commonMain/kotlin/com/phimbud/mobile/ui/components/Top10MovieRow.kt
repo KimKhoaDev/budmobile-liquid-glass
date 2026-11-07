@@ -26,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +48,11 @@ import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 
+private val Top10RankOutlineStroke = Stroke(
+    width = 7f,
+    join = StrokeJoin.Round
+)
+
 @Composable
 fun Top10MovieRow(
     title: String,
@@ -56,6 +62,7 @@ fun Top10MovieRow(
     modifier: Modifier = Modifier
 ) {
     if (movies.isEmpty()) return
+    val top10Items = remember(movies) { movies.take(10) }
 
     Column(modifier = modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Row(
@@ -117,7 +124,7 @@ fun Top10MovieRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             itemsIndexed(
-                items = movies.take(10),
+                items = top10Items,
                 key = { _, m -> m.fid },
                 contentType = { _, _ -> "top10_card" }
             ) { index, movie ->
@@ -166,10 +173,7 @@ fun Top10PosterCard(
                         fontWeight = FontWeight.Black,
                         letterSpacing = letterSpacing,
                         color = Color.White.copy(alpha = 0.72f),
-                        drawStyle = Stroke(
-                            width = 7f,
-                            join = StrokeJoin.Round
-                        )
+                        drawStyle = Top10RankOutlineStroke
                     )
                 )
                 // Inner dark fill

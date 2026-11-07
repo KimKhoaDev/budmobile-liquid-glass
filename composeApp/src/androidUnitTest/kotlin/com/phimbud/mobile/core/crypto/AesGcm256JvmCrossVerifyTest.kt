@@ -90,4 +90,29 @@ class AesGcm256JvmCrossVerifyTest {
         val result = SubtitleCipher.decrypt(fileName, base64Payload)
         assertEquals("1\n00:00:02,000 --> 00:00:05,000\n<i>Trò chơi bắt đầu!</i>\n", result)
     }
+
+    @Test
+    fun `AesGcm256 decrypts in-place slice with non-zero inputOffset and trailing padding`() {
+        val rng = Random(777)
+        val key = rng.nextBytes(32)
+        val iv = rng.nextBytes(12)
+        val plaintext = rng.nextBytes(513)
+
+        val jce = Cipher.getInstance("AES/GCM/NoPadding")
+        jce.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        val ciphertextWithTag = jce.doFinal(plaintext)
+
+        val prefix = rng.nextBytes(19)
+        val suffix = rng.nextBytes(23)
+        val combined = prefix + ciphertextWithTag + suffix
+
+        val decrypted = AesGcm256.decrypt(
+            key = key,
+            iv = iv,
+            ciphertextWithTag = combined,
+            inputOffset = prefix.size,
+            inputLength = ciphertextWithTag.size
+        )
+        assertArrayEquals(plaintext, decrypted)
+    }
 }

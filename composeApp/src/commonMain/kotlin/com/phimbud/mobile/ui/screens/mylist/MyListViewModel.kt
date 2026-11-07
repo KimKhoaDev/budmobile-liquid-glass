@@ -3,6 +3,7 @@ package com.phimbud.mobile.ui.screens.mylist
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.phimbud.mobile.core.model.UserSession
+import com.phimbud.mobile.core.platform.currentTimeMillis
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,14 +18,16 @@ class MyListViewModel(private val repository: PhimBudRepository) : ViewModel() {
     private val _selectedTab = MutableStateFlow(0) // 0: Wishlist, 1: Watching
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
-    init {
-        refresh()
-    }
+    private var lastRefreshMs = 0L
 
-    fun refresh() {
+    fun refresh(force: Boolean = false) {
+        val now = currentTimeMillis()
+        if (!force && lastRefreshMs > 0L && (now - lastRefreshMs) in 0L until 15_000L) {
+            return
+        }
+        lastRefreshMs = now
         viewModelScope.launch {
             repository.loadCollection()
-            repository.loadHomeFeed()
         }
     }
 

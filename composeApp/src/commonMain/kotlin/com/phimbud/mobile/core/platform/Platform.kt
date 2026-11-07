@@ -2,6 +2,8 @@ package com.phimbud.mobile.core.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import coil3.ImageLoader
+import okio.Path
 import kotlin.math.roundToLong
 
 expect class PlatformContext
@@ -24,6 +26,20 @@ expect class SubtitleCache(context: PlatformContext) {
     fun readIfCached(cacheFileName: String): CachedSubtitle?
     fun write(cacheFileName: String, content: String): CachedSubtitle
 }
+
+expect class CatalogIndexCache(context: PlatformContext) {
+    fun readExact(timeKey: String): String?
+    fun readLatestFallback(): String?
+    fun write(timeKey: String, content: String)
+    fun clear()
+}
+
+expect fun platformImageCacheDirectory(context: PlatformContext): Path
+
+expect fun configurePlatformImageLoader(
+    builder: ImageLoader.Builder,
+    context: PlatformContext
+): ImageLoader.Builder
 
 expect fun currentTimeMillis(): Long
 

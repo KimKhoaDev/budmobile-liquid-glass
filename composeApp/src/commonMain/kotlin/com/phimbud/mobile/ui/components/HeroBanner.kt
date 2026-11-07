@@ -40,6 +40,24 @@ import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 
+private val HeroTopScrimBrush = Brush.verticalGradient(
+    colors = listOf(
+        NetflixBlack.copy(alpha = 0.85f),
+        NetflixBlack.copy(alpha = 0.45f),
+        Color.Transparent
+    )
+)
+
+private val HeroBottomScrimBrush = Brush.verticalGradient(
+    colors = listOf(
+        Color.Transparent,
+        NetflixBlack.copy(alpha = 0.2f),
+        NetflixBlack.copy(alpha = 0.82f),
+        NetflixBlack
+    ),
+    startY = 160f
+)
+
 @Composable
 fun HeroBanner(
     movie: Movie,
@@ -66,32 +84,14 @@ fun HeroBanner(
                 .fillMaxWidth()
                 .height(155.dp)
                 .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            NetflixBlack.copy(alpha = 0.85f),
-                            NetflixBlack.copy(alpha = 0.45f),
-                            Color.Transparent
-                        )
-                    )
-                )
+                .background(HeroTopScrimBrush)
         )
 
         // Bottom gradient scrim
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            NetflixBlack.copy(alpha = 0.2f),
-                            NetflixBlack.copy(alpha = 0.82f),
-                            NetflixBlack
-                        ),
-                        startY = 160f
-                    )
-                )
+                .background(HeroBottomScrimBrush)
         )
 
         Column(

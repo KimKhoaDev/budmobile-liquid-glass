@@ -12,7 +12,6 @@ object Top10CatalogMatcher {
         Regex("""\s+-\s*(?:Season|Part|Volume)\s+\d+.*$""", RegexOption.IGNORE_CASE)
     )
     private val numberedColonRegex = Regex("""\s+\d+\s*:""")
-    private val multiSpaceRegex = Regex("""\s+""")
 
     data class CleanedTitle(
         val baseTitle: String,
@@ -40,8 +39,7 @@ object Top10CatalogMatcher {
     }
 
     internal fun normalizeKey(input: String): String {
-        val norm = SearchNormalizer.normalize(input)
-        return multiSpaceRegex.replace(norm, " ").trim()
+        return SearchNormalizer.normalize(input)
     }
 
     fun buildTop10Lists(
@@ -57,11 +55,11 @@ object Top10CatalogMatcher {
         val byVi = HashMap<String, MutableList<SearchItem>>(catalog.size * 2)
 
         for (item in catalog) {
-            val enKey = multiSpaceRegex.replace(item.normalizedNameEn, " ").trim()
+            val enKey = item.normalizedNameEn
             if (enKey.isNotEmpty()) {
                 byEn.getOrPut(enKey) { ArrayList(2) }.add(item)
             }
-            val viKey = multiSpaceRegex.replace(item.normalizedNameVi, " ").trim()
+            val viKey = item.normalizedNameVi
             if (viKey.isNotEmpty()) {
                 byVi.getOrPut(viKey) { ArrayList(2) }.add(item)
             }

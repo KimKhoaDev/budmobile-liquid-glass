@@ -10,6 +10,24 @@ package com.phimbud.mobile.core.crypto
  */
 object UrlCipher {
 
+    private const val B64_URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+    private val B64_DECODE_TABLE = IntArray(128) { 64 }.apply {
+        for (c in 'A'..'Z') this[c.code] = c.code - 'A'.code
+        for (c in 'a'..'z') this[c.code] = c.code - 'a'.code + 26
+        for (c in '0'..'9') this[c.code] = c.code - '0'.code + 52
+        this['+'.code] = 62
+        this['-'.code] = 62
+        this['/'.code] = 63
+        this['_'.code] = 63
+        // Skip markers (-1) for padding & whitespace
+        this['='.code] = -1
+        this['\n'.code] = -1
+        this['\r'.code] = -1
+        this[' '.code] = -1
+        this['\t'.code] = -1
+    }
+
     fun rot(input: String, shift: Int = 6): String = buildString(input.length) {
         val s = ((shift % 26) + 26) % 26
         for (ch in input) {
@@ -28,59 +46,68 @@ object UrlCipher {
     }
 
     /**
-     * Pure Kotlin Base64 / Base64URL decode across Android, iOS, and JVM unit tests.
+     * Single-pass pure Kotlin Base64 / Base64URL decode across Android, iOS, and JVM unit tests
+     * with zero intermediate String copies.
      */
     fun base64Decode(input: String): ByteArray {
-        val sb = StringBuilder(input.length)
-        for (c in input) {
-            if (c != '=' && c != '\n' && c != '\r' && c != ' ' && c != '\t') {
-                sb.append(c)
-            }
-        }
-        val clean = sb.toString()
-        val len = clean.length
-        if (len == 0) return ByteArray(0)
-        val pad = when (len % 4) {
-            2 -> "=="
-            3 -> "="
-            else -> ""
-        }
-        val full = clean + pad
-        val out = ByteArray((full.length / 4) * 3)
+        val inLen = input.length
+        if (inLen == 0) return ByteArray(0)
+
+        val out = ByteArray(((inLen + 3) shr 2) * 3)
         var outIdx = 0
-        var i = 0
-        while (i < full.length) {
-            val c0 = b64CharToVal(full[i++])
-            val c1 = b64CharToVal(full[i++])
-            val c2 = if (i < full.length) b64CharToVal(full[i++]) else 64
-            val c3 = if (i < full.length) b64CharToVal(full[i++]) else 64
+        var q0 = 0
+        var q1 = 0
+        var q2 = 0
+        var qCount = 0
 
-            val b0 = (c0 shl 2) or (c1 shr 4)
-            out[outIdx++] = b0.toByte()
+        for (i in 0 until inLen) {
+            val code = input[i].code
+            val v = if (code < 128) B64_DECODE_TABLE[code] else 64
+            if (v < 0) continue
+            if (v >= 64) return ByteArray(0)
 
-            if (c2 != 64) {
-                val b1 = ((c1 and 0xF) shl 4) or (c2 shr 2)
-                out[outIdx++] = b1.toByte()
-            }
-            if (c3 != 64) {
-                val b2 = ((c2 and 0x3) shl 6) or c3
-                out[outIdx++] = b2.toByte()
+            when (qCount) {
+                0 -> {
+                    q0 = v
+                    qCount = 1
+                }
+                1 -> {
+                    q1 = v
+                    qCount = 2
+                }
+                2 -> {
+                    q2 = v
+                    qCount = 3
+                }
+                else -> {
+                    out[outIdx++] = ((q0 shl 2) or (q1 shr 4)).toByte()
+                    out[outIdx++] = (((q1 and 0xF) shl 4) or (q2 shr 2)).toByte()
+                    out[outIdx++] = (((q2 and 0x3) shl 6) or v).toByte()
+                    qCount = 0
+                }
             }
         }
-        return if (outIdx == out.size) out else out.copyOf(outIdx)
-    }
 
-    private fun b64CharToVal(c: Char): Int = when (c) {
-        in 'A'..'Z' -> c.code - 'A'.code
-        in 'a'..'z' -> c.code - 'a'.code + 26
-        in '0'..'9' -> c.code - '0'.code + 52
-        '+', '-' -> 62
-        '/', '_' -> 63
-        else -> 64
+        if (qCount == 1) {
+            return ByteArray(0)
+        } else if (qCount == 2) {
+            out[outIdx++] = ((q0 shl 2) or (q1 shr 4)).toByte()
+        } else if (qCount == 3) {
+            out[outIdx++] = ((q0 shl 2) or (q1 shr 4)).toByte()
+            out[outIdx++] = (((q1 and 0xF) shl 4) or (q2 shr 2)).toByte()
+        }
+
+        return if (outIdx == 0) {
+            ByteArray(0)
+        } else if (outIdx == out.size) {
+            out
+        } else {
+            out.copyOf(outIdx)
+        }
     }
 
     fun base64UrlEncode(bytes: ByteArray): String {
-        val table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        val table = B64_URL_ALPHABET
         val sb = StringBuilder((bytes.size * 4 + 2) / 3)
         var i = 0
         while (i < bytes.size) {

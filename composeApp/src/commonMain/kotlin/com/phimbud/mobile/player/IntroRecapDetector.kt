@@ -191,12 +191,13 @@ object IntroRecapDetector {
     ): SkipSegment? {
         val spokenCues = cues.filter { it.isSpokenDialogue && it.endMs > minStartMs }
         if (spokenCues.isEmpty()) return null
+        val nonSpokenCues = cues.filter { !it.isSpokenDialogue }
 
         // Case A: Episode starts directly with Opening Intro (or immediately after Recap) before first spoken dialogue
         val firstSpoken = spokenCues.first()
         val initialGapMs = firstSpoken.startMs - minStartMs
-        val hasEarlyMusicOrCredits = cues.any {
-            it.startMs >= minStartMs && it.endMs <= firstSpoken.startMs && !it.isSpokenDialogue
+        val hasEarlyMusicOrCredits = nonSpokenCues.any {
+            it.startMs >= minStartMs && it.endMs <= firstSpoken.startMs
         }
         val minInitialIntroMs = if (hasEarlyMusicOrCredits) MIN_TAGGED_INTRO_MS else MIN_INSTRUMENTAL_INTRO_MS
 
@@ -229,10 +230,9 @@ object IntroRecapDetector {
             val gapDurationMs = gapEndMs - rawGapStartMs
             if (gapDurationMs > MAX_INTRO_DURATION_MS) continue
 
-            val nonSpokenInGap = cues.filter {
-                !it.isSpokenDialogue && it.startMs >= rawGapStartMs - 1_000L && it.endMs <= gapEndMs + 1_000L
+            val hasMusicOrCreditsInGap = nonSpokenCues.any {
+                it.startMs >= rawGapStartMs - 1_000L && it.endMs <= gapEndMs + 1_000L
             }
-            val hasMusicOrCreditsInGap = nonSpokenInGap.isNotEmpty()
             val minRequiredMs = if (hasMusicOrCreditsInGap) MIN_TAGGED_INTRO_MS else MIN_INSTRUMENTAL_INTRO_MS
 
             if (gapDurationMs >= minRequiredMs) {
@@ -260,28 +260,47 @@ object IntroRecapDetector {
     }
 
     internal fun parseCues(srtContent: String): List<SrtCue> {
-        val blocks = srtContent
-            .replace("\uFEFF", "")
-            .replace("\r\n", "\n")
-            .replace('\r', '\n')
-            .split(Regex("\n{2,}"))
+        val len = srtContent.length
+        var pos = if (len > 0 && srtContent[0] == '\uFEFF') 1 else 0
+        val maxWindowCutoffMs = MAX_ANALYSIS_WINDOW_MS + 60_000L
 
-        val cues = ArrayList<SrtCue>(blocks.size.coerceAtMost(400))
-        for (block in blocks) {
-            val lines = block.lines().map { it.trim() }.filter { it.isNotEmpty() }
-            if (lines.size < 2) continue
+        val cues = ArrayList<SrtCue>(128)
+        val blockLines = ArrayList<String>(4)
 
-            val timeLineIndex = if (TIMECODE_REGEX.containsMatchIn(lines[0])) 0 else 1
-            if (timeLineIndex >= lines.size) continue
+        fun processBlock(): Boolean {
+            if (blockLines.size < 2) {
+                blockLines.clear()
+                return true
+            }
+            val firstMatch = if (blockLines[0].contains("-->")) TIMECODE_REGEX.find(blockLines[0]) else null
+            val timeLineIndex: Int
+            val match: MatchResult?
+            if (firstMatch != null) {
+                timeLineIndex = 0
+                match = firstMatch
+            } else if (blockLines[1].contains("-->")) {
+                timeLineIndex = 1
+                match = TIMECODE_REGEX.find(blockLines[1])
+            } else {
+                blockLines.clear()
+                return true
+            }
 
-            val match = TIMECODE_REGEX.find(lines[timeLineIndex]) ?: continue
+            if (match == null || timeLineIndex + 1 >= blockLines.size) {
+                blockLines.clear()
+                return true
+            }
+
             val startMs = toMillis(
                 match.groupValues[1],
                 match.groupValues[2],
                 match.groupValues[3],
                 match.groupValues[4]
             )
-            if (startMs > MAX_ANALYSIS_WINDOW_MS + 60_000L) break
+            if (startMs > maxWindowCutoffMs) {
+                blockLines.clear()
+                return false
+            }
 
             val endMs = toMillis(
                 match.groupValues[5],
@@ -289,15 +308,29 @@ object IntroRecapDetector {
                 match.groupValues[7],
                 match.groupValues[8]
             )
-            if (endMs <= startMs) continue
+            if (endMs <= startMs) {
+                blockLines.clear()
+                return true
+            }
 
-            val rawText = lines.subList(timeLineIndex + 1, lines.size)
-                .joinToString("\n")
-                .let { HTML_TAG_REGEX.replace(it, "") }
-                .let { ASS_TAG_REGEX.replace(it, "") }
-                .trim()
+            val rawJoined = if (timeLineIndex + 2 == blockLines.size) {
+                blockLines[timeLineIndex + 1]
+            } else {
+                buildString {
+                    for (idx in (timeLineIndex + 1) until blockLines.size) {
+                        if (idx > timeLineIndex + 1) append('\n')
+                        append(blockLines[idx])
+                    }
+                }
+            }
+            blockLines.clear()
 
-            if (rawText.isEmpty()) continue
+            var cleaned = if (rawJoined.indexOf('<') >= 0) HTML_TAG_REGEX.replace(rawJoined, "") else rawJoined
+            if (cleaned.indexOf('{') >= 0) {
+                cleaned = ASS_TAG_REGEX.replace(cleaned, "")
+            }
+            val rawText = cleaned.trim()
+            if (rawText.isEmpty()) return true
 
             val normalized = SearchNormalizer.normalize(rawText)
             val isMusic = isMusicOrSoundCue(rawText)
@@ -312,6 +345,43 @@ object IntroRecapDetector {
                     isCreditOrTitleCard = isCredit
                 )
             )
+            return true
+        }
+
+        while (pos < len) {
+            var lineEnd = pos
+            while (lineEnd < len) {
+                val c = srtContent[lineEnd]
+                if (c == '\n' || c == '\r') break
+                lineEnd++
+            }
+            val nextPos = if (lineEnd < len) {
+                if (srtContent[lineEnd] == '\r' && lineEnd + 1 < len && srtContent[lineEnd + 1] == '\n') {
+                    lineEnd + 2
+                } else {
+                    lineEnd + 1
+                }
+            } else {
+                len
+            }
+
+            var trimStart = pos
+            var trimEnd = lineEnd
+            while (trimStart < trimEnd && srtContent[trimStart].isWhitespace()) trimStart++
+            while (trimEnd > trimStart && srtContent[trimEnd - 1].isWhitespace()) trimEnd--
+
+            if (trimStart == trimEnd) {
+                if (blockLines.isNotEmpty() && !processBlock()) {
+                    return cues
+                }
+            } else {
+                blockLines.add(srtContent.substring(trimStart, trimEnd))
+            }
+            pos = nextPos
+        }
+
+        if (blockLines.isNotEmpty()) {
+            processBlock()
         }
         return cues
     }

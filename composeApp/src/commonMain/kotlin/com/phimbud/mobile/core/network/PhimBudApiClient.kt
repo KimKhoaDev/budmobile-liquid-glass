@@ -15,6 +15,7 @@ import com.phimbud.mobile.core.model.TitleDetail
 import com.phimbud.mobile.core.model.UserSession
 import com.phimbud.mobile.core.model.WatchInfo
 import com.phimbud.mobile.core.platform.CachedSubtitle
+import com.phimbud.mobile.core.platform.CatalogIndexCache
 import com.phimbud.mobile.core.platform.PlatformContext
 import com.phimbud.mobile.core.platform.SubtitleCache
 import com.phimbud.mobile.core.platform.logError
@@ -54,9 +55,10 @@ class SessionExpiredException(message: String = "Phiên đăng nhập đã hết
 class PhimBudApiClient(context: PlatformContext) {
 
     val cookieStore = PersistentCookieStore(context)
-    val hashResolver = RemoteHashResolver(context)
-    private val subtitleCache = SubtitleCache(context)
-    val httpEngine = PlatformHttpEngine(context, cookieStore)
+    val hashResolver by lazy { RemoteHashResolver(context) }
+    private val subtitleCache by lazy { SubtitleCache(context) }
+    private val catalogIndexCache by lazy { CatalogIndexCache(context) }
+    val httpEngine by lazy { PlatformHttpEngine(context, cookieStore) }
 
     val httpClient: HttpClient
         get() = httpEngine.httpClient
@@ -73,6 +75,7 @@ class PhimBudApiClient(context: PlatformContext) {
 
     fun logout() {
         cookieStore.clear()
+        catalogIndexCache.clear()
     }
 
     suspend fun login(email: String, pass: String): Result<Boolean> = withContext(Dispatchers.IO) {
@@ -214,41 +217,43 @@ class PhimBudApiClient(context: PlatformContext) {
             val text = res.bodyAsText()
             if (text.isBlank()) throw Exception("Empty response")
 
-            val root = json.parseToJsonElement(text).jsonObject
-            if (root["type"]?.jsonPrimitive?.contentOrNull == "redirect" &&
-                root["location"]?.jsonPrimitive?.contentOrNull?.contains("/auth/login") == true
-            ) {
-                throw SessionExpiredException()
-            }
-            val nodes = root["nodes"]?.jsonArray ?: throw Exception("No nodes in watch data")
+            withContext(Dispatchers.Default) {
+                val root = json.parseToJsonElement(text).jsonObject
+                if (root["type"]?.jsonPrimitive?.contentOrNull == "redirect" &&
+                    root["location"]?.jsonPrimitive?.contentOrNull?.contains("/auth/login") == true
+                ) {
+                    throw SessionExpiredException()
+                }
+                val nodes = root["nodes"]?.jsonArray ?: throw Exception("No nodes in watch data")
 
-            var info = WatchInfo(fid = watchFid)
-            if (nodes.size > 2 && nodes[2] !is JsonNull) {
-                val data = nodes[2].jsonObject["data"]?.jsonArray
-                if (data != null) {
-                    val resolved = DevalueCodec.unflatten(data) as? JsonObject
-                    if (resolved != null) {
-                        val titleObj = resolved["title"] as? JsonObject
-                        val mediaInfo = titleObj?.get("mediainfoParsed") as? JsonObject
+                var info = WatchInfo(fid = watchFid)
+                if (nodes.size > 2 && nodes[2] !is JsonNull) {
+                    val data = nodes[2].jsonObject["data"]?.jsonArray
+                    if (data != null) {
+                        val resolved = DevalueCodec.unflatten(data) as? JsonObject
+                        if (resolved != null) {
+                            val titleObj = resolved["title"] as? JsonObject
+                            val mediaInfo = titleObj?.get("mediainfoParsed") as? JsonObject
 
-                        info = WatchInfo(
-                            fid = titleObj?.get("fid")?.jsonPrimitive?.contentOrNull ?: watchFid,
-                            showFid = titleObj?.get("showFid")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                            showNameEn = titleObj?.get("showNameEn")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                            showNameVi = titleObj?.get("showNameVi")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                            seasonFid = titleObj?.get("seasonFid")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                            seasonNumber = titleObj?.get("seasonNumber")?.jsonPrimitive?.intOrNull ?: 1,
-                            episodeNumber = titleObj?.get("number")?.jsonPrimitive?.intOrNull ?: 1,
-                            nextTitleFid = resolved["nextTitleFid"]?.jsonPrimitive?.contentOrNull,
-                            prevTitleFid = resolved["prevTitleFid"]?.jsonPrimitive?.contentOrNull,
-                            isVip = resolved["isVip"]?.jsonPrimitive?.booleanOrNull ?: false,
-                            lastCurrentTime = resolved["lastCurrentTime"]?.jsonPrimitive?.intOrNull,
-                            durationSeconds = mediaInfo?.get("duration")?.jsonPrimitive?.doubleOrNull ?: 0.0
-                        )
+                            info = WatchInfo(
+                                fid = titleObj?.get("fid")?.jsonPrimitive?.contentOrNull ?: watchFid,
+                                showFid = titleObj?.get("showFid")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                showNameEn = titleObj?.get("showNameEn")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                showNameVi = titleObj?.get("showNameVi")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                seasonFid = titleObj?.get("seasonFid")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                seasonNumber = titleObj?.get("seasonNumber")?.jsonPrimitive?.intOrNull ?: 1,
+                                episodeNumber = titleObj?.get("number")?.jsonPrimitive?.intOrNull ?: 1,
+                                nextTitleFid = resolved["nextTitleFid"]?.jsonPrimitive?.contentOrNull,
+                                prevTitleFid = resolved["prevTitleFid"]?.jsonPrimitive?.contentOrNull,
+                                isVip = resolved["isVip"]?.jsonPrimitive?.booleanOrNull ?: false,
+                                lastCurrentTime = resolved["lastCurrentTime"]?.jsonPrimitive?.intOrNull,
+                                durationSeconds = mediaInfo?.get("duration")?.jsonPrimitive?.doubleOrNull ?: 0.0
+                            )
+                        }
                     }
                 }
+                info
             }
-            info
         }
     }
 
@@ -281,70 +286,72 @@ class PhimBudApiClient(context: PlatformContext) {
                 }
             }
 
-            val root = json.parseToJsonElement(text).jsonObject
-            val nodes = root["nodes"]?.jsonArray ?: throw Exception("No nodes in title data")
+            withContext(Dispatchers.Default) {
+                val root = json.parseToJsonElement(text).jsonObject
+                val nodes = root["nodes"]?.jsonArray ?: throw Exception("No nodes in title data")
 
-            var detail = TitleDetail(fid = fid, nameEn = "", nameVi = "")
-            if (nodes.size > 2 && nodes[2] !is JsonNull) {
-                val data = nodes[2].jsonObject["data"]?.jsonArray
-                if (data != null) {
-                    val resolved = DevalueCodec.unflatten(data) as? JsonObject
-                    if (resolved != null) {
-                        val titleObj = resolved["title"] as? JsonObject
-                        val genresArray = resolved["genres"] as? JsonArray
-                        val seasonsArray = resolved["seasons"] as? JsonArray
-                        val relatedArray = resolved["relatedTitles"] as? JsonArray
+                var detail = TitleDetail(fid = fid, nameEn = "", nameVi = "")
+                if (nodes.size > 2 && nodes[2] !is JsonNull) {
+                    val data = nodes[2].jsonObject["data"]?.jsonArray
+                    if (data != null) {
+                        val resolved = DevalueCodec.unflatten(data) as? JsonObject
+                        if (resolved != null) {
+                            val titleObj = resolved["title"] as? JsonObject
+                            val genresArray = resolved["genres"] as? JsonArray
+                            val seasonsArray = resolved["seasons"] as? JsonArray
+                            val relatedArray = resolved["relatedTitles"] as? JsonArray
 
-                        val genreTags = genresArray?.mapNotNull { g ->
-                            val gObj = g as? JsonObject ?: return@mapNotNull null
-                            val name = gObj["nameVi"]?.jsonPrimitive?.contentOrNull
-                                ?: gObj["name"]?.jsonPrimitive?.contentOrNull
-                                ?: return@mapNotNull null
-                            val rawSlug = gObj["slug"]?.jsonPrimitive?.contentOrNull
-                            val slug = rawSlug?.takeIf { it.isNotBlank() }
-                                ?: BrowseFilterOptions.resolveGenreSlug(name)
-                                ?: return@mapNotNull null
-                            GenreTag(name = name, slug = slug)
-                        } ?: emptyList()
+                            val genreTags = genresArray?.mapNotNull { g ->
+                                val gObj = g as? JsonObject ?: return@mapNotNull null
+                                val name = gObj["nameVi"]?.jsonPrimitive?.contentOrNull
+                                    ?: gObj["name"]?.jsonPrimitive?.contentOrNull
+                                    ?: return@mapNotNull null
+                                val rawSlug = gObj["slug"]?.jsonPrimitive?.contentOrNull
+                                val slug = rawSlug?.takeIf { it.isNotBlank() }
+                                    ?: BrowseFilterOptions.resolveGenreSlug(name)
+                                    ?: return@mapNotNull null
+                                GenreTag(name = name, slug = slug)
+                            } ?: emptyList()
 
-                        val genres = genreTags.map { it.name }
+                            val genres = genreTags.map { it.name }
 
-                        val seasons = seasonsArray?.mapNotNull { s ->
-                            val sObj = s as? JsonObject ?: return@mapNotNull null
-                            val sfid = sObj["fid"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                            val num = sObj["number"]?.jsonPrimitive?.intOrNull ?: 1
-                            Season(
-                                fid = sfid,
-                                number = num,
-                                seasonFull = sObj["seasonFull"]?.jsonPrimitive?.booleanOrNull ?: false,
-                                episodeCount = sObj["episodeCount"]?.jsonPrimitive?.contentOrNull ?: "0"
+                            val seasons = seasonsArray?.mapNotNull { s ->
+                                val sObj = s as? JsonObject ?: return@mapNotNull null
+                                val sfid = sObj["fid"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                                val num = sObj["number"]?.jsonPrimitive?.intOrNull ?: 1
+                                Season(
+                                    fid = sfid,
+                                    number = num,
+                                    seasonFull = sObj["seasonFull"]?.jsonPrimitive?.booleanOrNull ?: false,
+                                    episodeCount = sObj["episodeCount"]?.jsonPrimitive?.contentOrNull ?: "0"
+                                )
+                            } ?: emptyList()
+
+                            val related = parseMovieList(relatedArray)
+                            val parsedYear = titleObj?.get("year")?.jsonPrimitive?.intOrNull
+                                ?: titleObj?.get("publishDate")?.jsonPrimitive?.contentOrNull?.take(4)?.toIntOrNull()
+                                ?: 0
+
+                            detail = TitleDetail(
+                                fid = titleObj?.get("fid")?.jsonPrimitive?.contentOrNull ?: fid,
+                                nameEn = titleObj?.get("nameEn")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                nameVi = titleObj?.get("nameVi")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                type = titleObj?.get("type")?.jsonPrimitive?.contentOrNull ?: "show",
+                                intro = titleObj?.get("intro")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                tmdbPoster = titleObj?.get("tmdbPoster")?.jsonPrimitive?.contentOrNull,
+                                tmdbBackdrop = titleObj?.get("tmdbBackdrop")?.jsonPrimitive?.contentOrNull,
+                                imdbRating = titleObj?.get("imdbRating")?.jsonPrimitive?.doubleOrNull,
+                                genres = genres,
+                                genreTags = genreTags,
+                                seasons = seasons,
+                                relatedTitles = related,
+                                year = parsedYear
                             )
-                        } ?: emptyList()
-
-                        val related = parseMovieList(relatedArray)
-                        val parsedYear = titleObj?.get("year")?.jsonPrimitive?.intOrNull
-                            ?: titleObj?.get("publishDate")?.jsonPrimitive?.contentOrNull?.take(4)?.toIntOrNull()
-                            ?: 0
-
-                        detail = TitleDetail(
-                            fid = titleObj?.get("fid")?.jsonPrimitive?.contentOrNull ?: fid,
-                            nameEn = titleObj?.get("nameEn")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                            nameVi = titleObj?.get("nameVi")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                            type = titleObj?.get("type")?.jsonPrimitive?.contentOrNull ?: "show",
-                            intro = titleObj?.get("intro")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                            tmdbPoster = titleObj?.get("tmdbPoster")?.jsonPrimitive?.contentOrNull,
-                            tmdbBackdrop = titleObj?.get("tmdbBackdrop")?.jsonPrimitive?.contentOrNull,
-                            imdbRating = titleObj?.get("imdbRating")?.jsonPrimitive?.doubleOrNull,
-                            genres = genres,
-                            genreTags = genreTags,
-                            seasons = seasons,
-                            relatedTitles = related,
-                            year = parsedYear
-                        )
+                        }
                     }
                 }
+                detail
             }
-            detail
         }
     }
 
@@ -360,37 +367,40 @@ class PhimBudApiClient(context: PlatformContext) {
             val text = res.bodyAsText()
             if (text.isBlank()) throw Exception("Empty response")
 
-            val resolved = DevalueCodec.extractRpcResult(text) as? JsonObject
-                ?: throw Exception("Failed to extract getEpisodes RPC result")
+            withContext(Dispatchers.Default) {
+                val resolved = DevalueCodec.extractRpcResult(text) as? JsonObject
+                    ?: throw Exception("Failed to extract getEpisodes RPC result")
 
-            val episodesArray = resolved["episodes"] as? JsonArray ?: JsonArray(emptyList())
-            val releasesArray = resolved["releases"] as? JsonArray ?: JsonArray(emptyList())
+                val episodesArray = resolved["episodes"] as? JsonArray ?: JsonArray(emptyList())
+                val releasesArray = resolved["releases"] as? JsonArray ?: JsonArray(emptyList())
 
-            val releaseMap = mutableMapOf<Int, JsonObject>()
-            for (rel in releasesArray) {
-                val relObj = rel as? JsonObject ?: continue
-                val num = relObj["number"]?.jsonPrimitive?.intOrNull ?: continue
-                releaseMap[num] = relObj
-            }
+                val releaseMap = HashMap<Int, JsonObject>(releasesArray.size * 2)
+                for (rel in releasesArray) {
+                    val relObj = rel as? JsonObject ?: continue
+                    val num = relObj["number"]?.jsonPrimitive?.intOrNull ?: continue
+                    releaseMap[num] = relObj
+                }
 
-            val list = mutableListOf<Episode>()
-            for (ep in episodesArray) {
-                val epObj = ep as? JsonObject ?: continue
-                val fid = epObj["fid"]?.jsonPrimitive?.contentOrNull ?: continue
-                val num = epObj["number"]?.jsonPrimitive?.intOrNull ?: 1
-                val rel = releaseMap[num]
+                val list = ArrayList<Episode>(episodesArray.size)
+                for (ep in episodesArray) {
+                    val epObj = ep as? JsonObject ?: continue
+                    val fid = epObj["fid"]?.jsonPrimitive?.contentOrNull ?: continue
+                    val num = epObj["number"]?.jsonPrimitive?.intOrNull ?: 1
+                    val rel = releaseMap[num]
 
-                list.add(
-                    Episode(
-                        fid = fid,
-                        number = num,
-                        name = rel?.get("name")?.jsonPrimitive?.contentOrNull ?: "Tập $num",
-                        airDate = rel?.get("airDate")?.jsonPrimitive?.contentOrNull,
-                        tmdbPoster = rel?.get("tmdbPoster")?.jsonPrimitive?.contentOrNull
+                    list.add(
+                        Episode(
+                            fid = fid,
+                            number = num,
+                            name = rel?.get("name")?.jsonPrimitive?.contentOrNull ?: "Tập $num",
+                            airDate = rel?.get("airDate")?.jsonPrimitive?.contentOrNull,
+                            tmdbPoster = rel?.get("tmdbPoster")?.jsonPrimitive?.contentOrNull
+                        )
                     )
-                )
+                }
+                list.sortBy { it.number }
+                list
             }
-            list.sortedBy { it.number }
         }
     }
 
@@ -495,53 +505,116 @@ class PhimBudApiClient(context: PlatformContext) {
                 val base64Text = res.bodyAsText()
                 if (base64Text.isBlank()) throw Exception("Empty subtitle")
 
-                val decryptedSrt = SubtitleCipher.decrypt(sub.fileName, base64Text)
+                val decryptedSrt = withContext(Dispatchers.Default) {
+                    SubtitleCipher.decrypt(sub.fileName, base64Text)
+                }
                 subtitleCache.write(cacheFileName, decryptedSrt)
             }.onFailure { err ->
                 logError("PhimBudApiClient", "Failed to download subtitle: ${sub.label} (${sub.fileName})", err)
             }
         }
 
-    suspend fun getAllTitlesIndex(): Result<List<SearchItem>> = withContext(Dispatchers.IO) {
-        runCatching {
-            val timeKey = utcDateHourKeyFromEpochMillis()
-            val url = "https://phimbud.com/api/titles/$timeKey"
-            val res = httpClient.get(url) {
-                header("Referer", "https://phimbud.com/")
-            }
-            if (!res.status.isSuccess()) {
-                throw Exception("HTTP ${res.status.value}: ${res.status.description}")
-            }
-            val text = res.bodyAsText()
-            if (text.isBlank()) throw Exception("Empty search index")
-
-            withContext(Dispatchers.Default) {
-                val array = json.parseToJsonElement(text).jsonArray
-                val list = ArrayList<SearchItem>(array.size)
-                for (row in array) {
-                    val r = row as? JsonArray ?: continue
-                    if (r.size >= 7) {
-                        val nameEn = r[1].jsonPrimitive.contentOrNull.orEmpty()
-                        val nameVi = r[2].jsonPrimitive.contentOrNull.orEmpty()
-                        list.add(
-                            SearchItem(
-                                fid = r[0].jsonPrimitive.contentOrNull.orEmpty(),
-                                nameEn = nameEn,
-                                nameVi = nameVi,
-                                tmdbPoster = r[3].jsonPrimitive.contentOrNull,
-                                translation = r[4].jsonPrimitive.contentOrNull ?: "subtitle",
-                                imdbId = r[5].jsonPrimitive.contentOrNull,
-                                year = r[6].jsonPrimitive.intOrNull ?: 0,
-                                normalizedNameVi = SearchNormalizer.normalize(nameVi),
-                                normalizedNameEn = SearchNormalizer.normalize(nameEn)
-                            )
-                        )
-                    }
-                }
-                list
+    private fun parseTitlesIndexJson(text: String): List<SearchItem> {
+        val array = json.parseToJsonElement(text).jsonArray
+        val list = ArrayList<SearchItem>(array.size)
+        for (row in array) {
+            val r = row as? JsonArray ?: continue
+            if (r.size >= 7) {
+                val nameEn = r[1].jsonPrimitive.contentOrNull.orEmpty()
+                val nameVi = r[2].jsonPrimitive.contentOrNull.orEmpty()
+                list.add(
+                    SearchItem(
+                        fid = r[0].jsonPrimitive.contentOrNull.orEmpty(),
+                        nameEn = nameEn,
+                        nameVi = nameVi,
+                        tmdbPoster = r[3].jsonPrimitive.contentOrNull,
+                        translation = r[4].jsonPrimitive.contentOrNull ?: "subtitle",
+                        imdbId = r[5].jsonPrimitive.contentOrNull,
+                        year = r[6].jsonPrimitive.intOrNull ?: 0,
+                        normalizedNameVi = SearchNormalizer.normalize(nameVi),
+                        normalizedNameEn = SearchNormalizer.normalize(nameEn)
+                    )
+                )
             }
         }
+        return list
     }
+
+    suspend fun readCachedTitlesIndexFromDisk(timeKey: String = utcDateHourKeyFromEpochMillis()): Pair<String, List<SearchItem>>? =
+        withContext(Dispatchers.IO) {
+            val exactText = catalogIndexCache.readExact(timeKey)
+            if (!exactText.isNullOrBlank()) {
+                val parsed = runCatching {
+                    withContext(Dispatchers.Default) { parseTitlesIndexJson(exactText) }
+                }.getOrNull()
+                if (!parsed.isNullOrEmpty()) {
+                    return@withContext Pair(timeKey, parsed)
+                }
+            }
+            val fallbackText = catalogIndexCache.readLatestFallback() ?: return@withContext null
+            val parsedFallback = runCatching {
+                withContext(Dispatchers.Default) { parseTitlesIndexJson(fallbackText) }
+            }.getOrNull()
+            if (!parsedFallback.isNullOrEmpty()) {
+                Pair("", parsedFallback)
+            } else {
+                null
+            }
+        }
+
+    suspend fun getAllTitlesIndex(timeKey: String = utcDateHourKeyFromEpochMillis()): Result<List<SearchItem>> =
+        withContext(Dispatchers.IO) {
+            // 1. Fast Disk Cache hit for current UTC hour (zero network request to phimbud.com)
+            catalogIndexCache.readExact(timeKey)?.let { cachedJson ->
+                val parsedCached = runCatching {
+                    withContext(Dispatchers.Default) { parseTitlesIndexJson(cachedJson) }
+                }.getOrNull()
+                if (!parsedCached.isNullOrEmpty()) {
+                    return@withContext Result.success(parsedCached)
+                }
+            }
+
+            // 2. Fetch fresh hourly static index from phimbud.com
+            val networkResult = runCatching {
+                val url = "https://phimbud.com/api/titles/$timeKey"
+                val res = httpClient.get(url) {
+                    header("Referer", "https://phimbud.com/")
+                }
+                if (res.status.value == 401 || res.request.url.encodedPath.contains("/auth/login")) {
+                    throw SessionExpiredException()
+                }
+                if (!res.status.isSuccess()) {
+                    throw Exception("HTTP ${res.status.value}: ${res.status.description}")
+                }
+                val text = res.bodyAsText()
+                if (text.isBlank()) throw Exception("Empty search index")
+
+                val parsed = withContext(Dispatchers.Default) {
+                    parseTitlesIndexJson(text)
+                }
+                if (parsed.isNotEmpty()) {
+                    catalogIndexCache.write(timeKey, text)
+                }
+                parsed
+            }
+
+            if (networkResult.isSuccess || networkResult.exceptionOrNull() is SessionExpiredException) {
+                return@withContext networkResult
+            }
+
+            // 3. Resilient fallback to latest valid disk cache if network fails transiently
+            val fallbackText = catalogIndexCache.readLatestFallback()
+            if (!fallbackText.isNullOrBlank()) {
+                val fallbackItems = runCatching {
+                    withContext(Dispatchers.Default) { parseTitlesIndexJson(fallbackText) }
+                }.getOrNull()
+                if (!fallbackItems.isNullOrEmpty()) {
+                    return@withContext Result.success(fallbackItems)
+                }
+            }
+
+            networkResult
+        }
 
     suspend fun getBrowsePage(
         page: Int = 1,
@@ -574,16 +647,18 @@ class PhimBudApiClient(context: PlatformContext) {
             val text = res.bodyAsText()
             if (text.isBlank()) throw Exception("Empty browse response")
 
-            val obj = json.parseToJsonElement(text).jsonObject
-            val titlesArray = obj["titles"] as? JsonArray ?: JsonArray(emptyList())
-            val titles = parseMovieList(titlesArray)
-            val nextPage = if (obj.containsKey("nextPage")) {
-                val nextEl = obj["nextPage"]
-                if (nextEl == null || nextEl is JsonNull) null else nextEl.jsonPrimitive.intOrNull
-            } else {
-                if (titles.isNotEmpty()) page + 1 else null
+            withContext(Dispatchers.Default) {
+                val obj = json.parseToJsonElement(text).jsonObject
+                val titlesArray = obj["titles"] as? JsonArray ?: JsonArray(emptyList())
+                val titles = parseMovieList(titlesArray)
+                val nextPage = if (obj.containsKey("nextPage")) {
+                    val nextEl = obj["nextPage"]
+                    if (nextEl == null || nextEl is JsonNull) null else nextEl.jsonPrimitive.intOrNull
+                } else {
+                    if (titles.isNotEmpty()) page + 1 else null
+                }
+                BrowsePageResult(titles = titles, nextPage = nextPage)
             }
-            BrowsePageResult(titles = titles, nextPage = nextPage)
         }
     }
 
@@ -686,41 +761,43 @@ class PhimBudApiClient(context: PlatformContext) {
                 }
             }
 
-            val root = json.parseToJsonElement(text).jsonObject
-            val nodes = root["nodes"]?.jsonArray ?: throw Exception("No nodes in collection data")
-            if (nodes.size > 2 && nodes[2] !is JsonNull) {
-                val nodeData = nodes[2].jsonObject["data"]?.jsonArray
-                if (nodeData != null) {
-                    val resolved = DevalueCodec.unflatten(nodeData) as? JsonObject
-                    if (resolved != null) {
-                        val itemsArray = resolved["items"] as? JsonArray
-                        val wishlist = mutableListOf<Movie>()
-                        val watching = mutableListOf<Movie>()
-                        itemsArray?.forEach { elem ->
-                            val obj = elem as? JsonObject ?: return@forEach
-                            val status = obj["status"]?.jsonPrimitive?.contentOrNull
-                            val fid = obj["fid"]?.jsonPrimitive?.contentOrNull ?: return@forEach
-                            val movie = Movie(
-                                fid = fid,
-                                nameEn = obj["nameEn"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                                nameVi = obj["nameVi"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                                intro = obj["intro"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                                tmdbPoster = obj["tmdbPoster"]?.jsonPrimitive?.contentOrNull,
-                                tmdbBackdrop = obj["tmdbBackdrop"]?.jsonPrimitive?.contentOrNull,
-                                translation = obj["translation"]?.jsonPrimitive?.contentOrNull ?: "subtitle",
-                                year = obj["year"]?.jsonPrimitive?.intOrNull ?: 0,
-                                imdbRating = obj["imdbRating"]?.jsonPrimitive?.doubleOrNull
-                            )
-                            when (status) {
-                                "wishlist" -> wishlist.add(movie)
-                                "watching" -> watching.add(movie)
+            withContext(Dispatchers.Default) {
+                val root = json.parseToJsonElement(text).jsonObject
+                val nodes = root["nodes"]?.jsonArray ?: throw Exception("No nodes in collection data")
+                if (nodes.size > 2 && nodes[2] !is JsonNull) {
+                    val nodeData = nodes[2].jsonObject["data"]?.jsonArray
+                    if (nodeData != null) {
+                        val resolved = DevalueCodec.unflatten(nodeData) as? JsonObject
+                        if (resolved != null) {
+                            val itemsArray = resolved["items"] as? JsonArray
+                            val wishlist = mutableListOf<Movie>()
+                            val watching = mutableListOf<Movie>()
+                            itemsArray?.forEach { elem ->
+                                val obj = elem as? JsonObject ?: return@forEach
+                                val status = obj["status"]?.jsonPrimitive?.contentOrNull
+                                val fid = obj["fid"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+                                val movie = Movie(
+                                    fid = fid,
+                                    nameEn = obj["nameEn"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                    nameVi = obj["nameVi"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                    intro = obj["intro"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                    tmdbPoster = obj["tmdbPoster"]?.jsonPrimitive?.contentOrNull,
+                                    tmdbBackdrop = obj["tmdbBackdrop"]?.jsonPrimitive?.contentOrNull,
+                                    translation = obj["translation"]?.jsonPrimitive?.contentOrNull ?: "subtitle",
+                                    year = obj["year"]?.jsonPrimitive?.intOrNull ?: 0,
+                                    imdbRating = obj["imdbRating"]?.jsonPrimitive?.doubleOrNull
+                                )
+                                when (status) {
+                                    "wishlist" -> wishlist.add(movie)
+                                    "watching" -> watching.add(movie)
+                                }
                             }
+                            return@withContext Pair(wishlist, watching)
                         }
-                        return@runCatching Pair(wishlist, watching)
                     }
                 }
+                Pair(emptyList(), emptyList())
             }
-            Pair(emptyList(), emptyList())
         }
     }
 }
