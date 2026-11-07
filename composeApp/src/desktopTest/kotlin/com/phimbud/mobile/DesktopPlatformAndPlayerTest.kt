@@ -1,17 +1,26 @@
 package com.phimbud.mobile
 
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.key.Key
 import com.phimbud.mobile.core.network.BrowserHeaders
 import com.phimbud.mobile.core.network.PersistentCookieStore
 import com.phimbud.mobile.core.network.PlatformHttpEngine
 import com.phimbud.mobile.core.network.StoredCookie
 import com.phimbud.mobile.core.platform.CatalogIndexCache
+import com.phimbud.mobile.core.platform.DesktopKeyDispatcher
+import com.phimbud.mobile.core.platform.DesktopPlayerKey
 import com.phimbud.mobile.core.platform.KeyValueStore
 import com.phimbud.mobile.core.platform.PlatformContext
 import com.phimbud.mobile.core.platform.SubtitleCache
 import com.phimbud.mobile.player.DesktopFfmpegPlayer
 import com.phimbud.mobile.player.DesktopHlsProxyServer
 import com.phimbud.mobile.player.HlsManifestRewriter
+import com.phimbud.mobile.player.SmartSubtitleCalculator
+import com.phimbud.mobile.player.SubtitleBgStyle
+import com.phimbud.mobile.player.SubtitleColorPreset
+import com.phimbud.mobile.player.SubtitlePreferences
+import com.phimbud.mobile.player.SubtitlePreferencesStore
+import com.phimbud.mobile.player.VideoResizeMode
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.cio.CIO
@@ -23,11 +32,14 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.runBlocking
 import org.bytedeco.ffmpeg.global.avcodec
 import org.bytedeco.ffmpeg.global.avutil
+import org.bytedeco.javacv.FFmpegFrameGrabber
 import org.bytedeco.javacv.FFmpegFrameRecorder
 import org.bytedeco.javacv.Frame
 import java.io.File
 import java.nio.ByteBuffer
+import java.nio.ShortBuffer
 import java.nio.file.Files
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -266,6 +278,254 @@ class DesktopPlatformAndPlayerTest {
             assertNotNull(bmp)
             assertEquals(320, bmp.width)
             assertEquals(180, bmp.height)
+        } finally {
+            player.release()
+            proxy.stop()
+            upstreamServer.stop(50, 200)
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun desktopKeyDispatcherHandlesSpaceAndArrowsWithoutFocusLossOrRepeatFlicker() {
+        val dispatcher = DesktopKeyDispatcher()
+        val received = ArrayList<DesktopPlayerKey>()
+
+        // When no player entry is active, Space & Arrow keys are not intercepted (e.g. SearchScreen TextField)
+        assertTrue(!dispatcher.dispatchRawKey(Key.Spacebar, isKeyDown = true, nowMs = 1_000L))
+        assertTrue(!dispatcher.dispatchRawKey(Key.DirectionRight, isKeyDown = true, nowMs = 1_000L))
+
+        val entry = DesktopKeyDispatcher.Entry(enabled = true) { key ->
+            received.add(key)
+        }
+        dispatcher.register(entry)
+
+        // Holding Spacebar triggers SPACE once on initial KeyDown and ignores OS auto-repeats until KeyUp
+        assertTrue(dispatcher.dispatchRawKey(Key.Spacebar, isKeyDown = true, nowMs = 1_100L))
+        assertTrue(dispatcher.dispatchRawKey(Key.Spacebar, isKeyDown = true, nowMs = 1_140L))
+        assertTrue(dispatcher.dispatchRawKey(Key.Spacebar, isKeyDown = true, nowMs = 1_180L))
+        assertEquals(listOf(DesktopPlayerKey.SPACE), received)
+
+        // KeyUp is also consumed so focused buttons underneath never misfire, then Space can trigger again
+        assertTrue(dispatcher.dispatchRawKey(Key.Spacebar, isKeyDown = false, nowMs = 1_220L))
+        assertTrue(dispatcher.dispatchRawKey(Key.Spacebar, isKeyDown = true, nowMs = 1_300L))
+        assertTrue(dispatcher.dispatchRawKey(Key.Spacebar, isKeyDown = false, nowMs = 1_340L))
+        assertEquals(listOf(DesktopPlayerKey.SPACE, DesktopPlayerKey.SPACE), received)
+
+        // Arrow keys seek immediately and throttle ultra-fast OS key-repeat bursts cleanly
+        received.clear()
+        assertTrue(dispatcher.dispatchRawKey(Key.DirectionRight, isKeyDown = true, nowMs = 2_000L))
+        assertTrue(dispatcher.dispatchRawKey(Key.DirectionRight, isKeyDown = true, nowMs = 2_030L)) // throttled
+        assertTrue(dispatcher.dispatchRawKey(Key.DirectionRight, isKeyDown = true, nowMs = 2_090L)) // allowed (>=75ms)
+        assertTrue(dispatcher.dispatchRawKey(Key.DirectionLeft, isKeyDown = true, nowMs = 2_200L))
+        assertEquals(
+            listOf(DesktopPlayerKey.ARROW_RIGHT, DesktopPlayerKey.ARROW_RIGHT, DesktopPlayerKey.ARROW_LEFT),
+            received
+        )
+
+        // Modifier combinations (e.g. Ctrl+Left) are ignored
+        assertTrue(!dispatcher.dispatchRawKey(Key.DirectionLeft, isKeyDown = true, hasModifier = true, nowMs = 2_500L))
+        dispatcher.unregister(entry)
+    }
+
+    @Test
+    fun smartSubtitleLayoutLuminanceAndPreferencesPersistCleanly() {
+        val tempRoot = Files.createTempDirectory("phimbud_sub_prefs_test").toFile()
+        try {
+            val store = SubtitlePreferencesStore(PlatformContext(tempRoot))
+            assertEquals(SubtitlePreferences(), store.load())
+
+            val custom = SubtitlePreferences(
+                fontScale = 1.2f,
+                bottomMarginPercent = 18.5f,
+                bgStyle = SubtitleBgStyle.NETFLIX_OUTLINE,
+                colorPreset = SubtitleColorPreset.WARM_YELLOW
+            )
+            store.save(custom)
+            assertEquals(custom, SubtitlePreferencesStore(PlatformContext(tempRoot)).load())
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+
+        // Verify DPI-invariant physical font sizing: 1080p @ 100% (1920x1080dp) vs 1080p @ 125% (1536x864dp)
+        val defaultPrefs = SubtitlePreferences()
+        val m100 = SmartSubtitleCalculator.computeMetrics(
+            containerWidthDp = 1920f,
+            containerHeightDp = 1080f,
+            videoWidthPx = 1920,
+            videoHeightPx = 1080,
+            resizeMode = VideoResizeMode.FIT,
+            prefs = defaultPrefs,
+            controlsVisible = false
+        )
+        val m125 = SmartSubtitleCalculator.computeMetrics(
+            containerWidthDp = 1536f,
+            containerHeightDp = 864f,
+            videoWidthPx = 1920,
+            videoHeightPx = 1080,
+            resizeMode = VideoResizeMode.FIT,
+            prefs = defaultPrefs,
+            controlsVisible = false
+        )
+        assertTrue(m100.fontSizeSp > 36f, "Expected ~40sp on 1080p fullscreen, got ${m100.fontSizeSp}")
+        assertEquals(m100.fontSizeSp, m125.fontSizeSp * 1.25f, 0.2f)
+        assertTrue(m100.bottomPaddingDp > 110f, "Expected Cinema safe-zone (~119dp) instead of 30dp, got ${m100.bottomPaddingDp}")
+
+        // Portrait floating window (430x860dp) hugs the rendered 16:9 video instead of dropping to bottom edge
+        val portraitMetrics = SmartSubtitleCalculator.computeMetrics(
+            containerWidthDp = 430f,
+            containerHeightDp = 860f,
+            videoWidthPx = 1920,
+            videoHeightPx = 1080,
+            resizeMode = VideoResizeMode.FIT,
+            prefs = defaultPrefs,
+            controlsVisible = false
+        )
+        assertTrue(portraitMetrics.bottomPaddingDp > 300f, "Expected subtitle anchored inside centered video frame")
+
+        // Verify bottom-band luminance sampler on dark vs bright BGRA buffers
+        val darkFrame = ByteArray(64 * 64 * 4) { idx -> if (idx % 4 == 3) 0xFF.toByte() else 12.toByte() }
+        val brightFrame = ByteArray(64 * 64 * 4) { idx -> if (idx % 4 == 3) 0xFF.toByte() else 240.toByte() }
+        val darkLum = DesktopFfmpegPlayer.sampleBottomBandLuminance(darkFrame, 64, 64)
+        val brightLum = DesktopFfmpegPlayer.sampleBottomBandLuminance(brightFrame, 64, 64)
+        assertTrue(darkLum < 0.10f)
+        assertTrue(brightLum > 0.88f)
+        assertTrue(
+            SmartSubtitleCalculator.computeBackdropAlpha(SubtitleBgStyle.SMART_ADAPTIVE, brightLum) >
+                SmartSubtitleCalculator.computeBackdropAlpha(SubtitleBgStyle.SMART_ADAPTIVE, darkLum) + 0.30f
+        )
+    }
+
+    @Test
+    fun desktopFfmpegPlayerNormalizesMpegTsStartTimeSoSubtitlesNeverLeadAudio() = runBlocking {
+        val tempRoot = Files.createTempDirectory("phimbud_av_sync_test").toFile()
+        val rawTsFile = File(tempRoot, "shifted_av.ts")
+
+        // 1. Synthesize a 0.8s MPEG-TS A/V segment with a +6.5s initial PTS offset (just like HLS VOD packagers)
+        val recorder = FFmpegFrameRecorder(rawTsFile, 320, 180, 2)
+        recorder.format = "mpegts"
+        recorder.setOption("output_ts_offset", "6.5")
+        recorder.videoCodec = avcodec.AV_CODEC_ID_MPEG2VIDEO
+        recorder.audioCodec = avcodec.AV_CODEC_ID_AAC
+        recorder.frameRate = 15.0
+        recorder.sampleRate = 48_000
+        recorder.audioBitrate = 128_000
+        recorder.pixelFormat = avutil.AV_PIX_FMT_YUV420P
+        recorder.start()
+
+        val synthFrame = Frame(320, 180, Frame.DEPTH_UBYTE, 3)
+        val imgBuf = synthFrame.image[0] as ByteBuffer
+        for (i in 0 until imgBuf.capacity()) {
+            imgBuf.put(i, ((i * 5) and 0xFF).toByte())
+        }
+        // 48000 Hz / 15 fps = 3200 samples per video frame * 2 channels = 6400 shorts
+        val pcmPerFrame = ShortArray(6400) { idx -> ((idx * 17) % 1200).toShort() }
+        repeat(12) {
+            recorder.record(synthFrame)
+            recorder.recordSamples(48_000, 2, ShortBuffer.wrap(pcmPerFrame))
+        }
+        recorder.stop()
+        recorder.release()
+
+        val tsBytes = rawTsFile.readBytes()
+        assertTrue(tsBytes.isNotEmpty(), "Expected synthesized A/V MPEG-TS segment")
+
+        val upstreamServer = embeddedServer(CIO, host = "127.0.0.1", port = 0) {
+            routing {
+                get("/vod/index.m3u8") {
+                    val m3u8 = """
+                        #EXTM3U
+                        #EXT-X-VERSION:3
+                        #EXT-X-TARGETDURATION:2
+                        #EXTINF:0.800,
+                        seg0.ts
+                        #EXT-X-ENDLIST
+                    """.trimIndent()
+                    call.respondText(
+                        text = m3u8,
+                        contentType = ContentType("application", "vnd.apple.mpegurl"),
+                        status = HttpStatusCode.OK
+                    )
+                }
+                get("/vod/seg0.ts") {
+                    call.respondBytes(tsBytes, ContentType.Video.MPEG, HttpStatusCode.OK)
+                }
+            }
+        }
+        upstreamServer.start(wait = false)
+
+        val ctx = PlatformContext(tempRoot)
+        val engine = PlatformHttpEngine(ctx, PersistentCookieStore(ctx))
+        val proxy = DesktopHlsProxyServer(engine.httpClient)
+        val reportedPositions = Collections.synchronizedList(ArrayList<Long>())
+        val playbackErrorRef = AtomicReference<String?>(null)
+        val endedLatch = CountDownLatch(1)
+
+        val player = DesktopFfmpegPlayer(
+            onFrameRendered = { _ -> },
+            onStateChanged = { _, _ -> },
+            onDurationKnown = { _ -> },
+            onPositionUpdated = { posMs ->
+                reportedPositions.add(posMs)
+            },
+            onPlaybackEnded = {
+                endedLatch.countDown()
+            },
+            onPlaybackError = { err ->
+                playbackErrorRef.set(err)
+                endedLatch.countDown()
+            }
+        )
+
+        try {
+            val upstreamPort = upstreamServer.engine.resolvedConnectors().first().port
+            val proxyBase = proxy.ensureStarted()
+            val localPlaylistUrl = HlsManifestRewriter.buildLocalPlaylistUrl(
+                proxyBase,
+                "http://127.0.0.1:$upstreamPort/vod/index.m3u8"
+            )
+
+            // Prove raw FFmpegFrameGrabber reports > 6.5s un-normalized PTS and resolveStreamStartOffsetUs catches it
+            val probe = FFmpegFrameGrabber(localPlaylistUrl)
+            try {
+                probe.start()
+                val detectedOffsetUs = DesktopFfmpegPlayer.resolveStreamStartOffsetUs(probe)
+                val firstRawFrame = probe.grab()
+                assertNotNull(firstRawFrame)
+                assertTrue(
+                    firstRawFrame.timestamp >= 6_400_000L,
+                    "Expected raw JavaCV frame.timestamp >= 6.4s, got ${firstRawFrame.timestamp}"
+                )
+                assertTrue(
+                    detectedOffsetUs >= 6_400_000L,
+                    "Expected resolveStreamStartOffsetUs >= 6.4s, got $detectedOffsetUs"
+                )
+            } finally {
+                runCatching { probe.stop() }
+                runCatching { probe.release() }
+            }
+
+            // Now verify DesktopFfmpegPlayer normalizes playback clock to 0ms..1300ms (never jumping ahead to 6500ms+)
+            player.openStream(
+                localPlaylistUrl = localPlaylistUrl,
+                initialResumeMs = 0L,
+                autoPlay = true
+            )
+
+            val finished = endedLatch.await(12, TimeUnit.SECONDS)
+            assertNull(playbackErrorRef.get(), "Unexpected playback error: ${playbackErrorRef.get()}")
+            assertTrue(finished, "Expected HLS A/V stream to finish cleanly")
+            assertTrue(reportedPositions.isNotEmpty(), "Expected position updates during playback")
+            val firstPosMs = reportedPositions.first()
+            val maxPosMs = reportedPositions.maxOrNull() ?: 0L
+            assertTrue(
+                firstPosMs < 400L,
+                "Expected normalized initial playback position < 400ms (near 0ms), but got ${firstPosMs}ms"
+            )
+            assertTrue(
+                maxPosMs < 2_000L,
+                "Expected normalized max position < 2000ms for 0.8s clip, but got ${maxPosMs}ms (all=$reportedPositions)"
+            )
         } finally {
             player.release()
             proxy.stop()

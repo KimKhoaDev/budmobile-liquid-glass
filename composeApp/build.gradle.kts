@@ -176,9 +176,10 @@ compose.desktop {
         jvmArgs += listOf("-Dfile.encoding=UTF-8")
 
         nativeDistributions {
+            outputBaseDir.set(project.layout.buildDirectory.dir("release-windows"))
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
             packageName = "PhimBud"
-            packageVersion = "1.0.0"
+            packageVersion = "1.1.1"
             description = "PhimBud Windows App"
             vendor = "PhimBud"
             modules(
@@ -195,6 +196,8 @@ compose.desktop {
             windows {
                 menuGroup = "PhimBud"
                 shortcut = true
+                dirChooser = true
+                upgradeUuid = "d306cf30-a001-3822-8129-e8d6c5539794"
             }
         }
     }

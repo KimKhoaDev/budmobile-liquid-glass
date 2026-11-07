@@ -12,6 +12,12 @@ enum class VideoResizeMode {
     FILL
 }
 
+enum class PlayerShortcutAction {
+    TOGGLE_PLAY_PAUSE,
+    SEEK_BACKWARD_10S,
+    SEEK_FORWARD_10S
+}
+
 @Stable
 interface PlatformPlayerController {
     val isPlaying: Boolean
@@ -46,7 +52,14 @@ expect fun rememberPlatformPlayerController(
 expect fun PlatformPlayerWindowEffect(
     showSubtitleDialog: Boolean,
     showServerDialog: Boolean,
-    controlsVisible: Boolean
+    controlsVisible: Boolean,
+    onUserMouseActivity: () -> Unit = {}
+)
+
+@Composable
+expect fun PlatformPlayerShortcutEffect(
+    enabled: Boolean,
+    onAction: (PlayerShortcutAction) -> Unit
 )
 
 @Composable
@@ -54,6 +67,9 @@ expect fun PlatformVideoSurface(
     controller: PlatformPlayerController,
     resizeMode: VideoResizeMode,
     activeSubtitle: CachedSubtitle?,
+    subtitlePrefs: SubtitlePreferences,
+    subtitleDelayMs: Long = 0L,
+    onSubtitleBottomMarginChanged: (Float) -> Unit,
     controlsVisible: Boolean,
     modifier: Modifier = Modifier
 )

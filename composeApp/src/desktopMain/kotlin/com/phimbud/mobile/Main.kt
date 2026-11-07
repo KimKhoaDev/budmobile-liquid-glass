@@ -15,7 +15,9 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.phimbud.mobile.core.platform.DesktopBackDispatcher
+import com.phimbud.mobile.core.platform.DesktopKeyDispatcher
 import com.phimbud.mobile.core.platform.LocalDesktopBackDispatcher
+import com.phimbud.mobile.core.platform.LocalDesktopKeyDispatcher
 import com.phimbud.mobile.core.platform.PlatformContext
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import java.awt.Color
@@ -35,6 +37,9 @@ fun main() = application {
     val backDispatcher = remember {
         DesktopBackDispatcher()
     }
+    val keyDispatcher = remember {
+        DesktopKeyDispatcher()
+    }
 
     Window(
         onCloseRequest = ::exitApplication,
@@ -45,7 +50,7 @@ fun main() = application {
             if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
                 backDispatcher.dispatchBack()
             } else {
-                false
+                keyDispatcher.dispatchKeyEvent(event)
             }
         }
     ) {
@@ -63,7 +68,8 @@ fun main() = application {
 
         CompositionLocalProvider(
             LocalDesktopWindowController provides windowController,
-            LocalDesktopBackDispatcher provides backDispatcher
+            LocalDesktopBackDispatcher provides backDispatcher,
+            LocalDesktopKeyDispatcher provides keyDispatcher
         ) {
             App(
                 repository = repository,

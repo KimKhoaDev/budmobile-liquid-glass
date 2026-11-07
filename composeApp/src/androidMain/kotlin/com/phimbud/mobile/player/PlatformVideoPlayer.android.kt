@@ -237,7 +237,8 @@ actual fun rememberPlatformPlayerController(
 actual fun PlatformPlayerWindowEffect(
     showSubtitleDialog: Boolean,
     showServerDialog: Boolean,
-    controlsVisible: Boolean
+    controlsVisible: Boolean,
+    onUserMouseActivity: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -293,12 +294,21 @@ actual fun PlatformPlayerWindowEffect(
     }
 }
 
+@Composable
+actual fun PlatformPlayerShortcutEffect(
+    enabled: Boolean,
+    onAction: (PlayerShortcutAction) -> Unit
+) = Unit
+
 @OptIn(UnstableApi::class)
 @Composable
 actual fun PlatformVideoSurface(
     controller: PlatformPlayerController,
     resizeMode: VideoResizeMode,
     activeSubtitle: CachedSubtitle?,
+    subtitlePrefs: SubtitlePreferences,
+    subtitleDelayMs: Long,
+    onSubtitleBottomMarginChanged: (Float) -> Unit,
     controlsVisible: Boolean,
     modifier: Modifier
 ) {
@@ -308,6 +318,17 @@ actual fun PlatformVideoSurface(
         VideoResizeMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
         VideoResizeMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
     }
+    val fgColor = when (subtitlePrefs.colorPreset) {
+        SubtitleColorPreset.WHITE -> android.graphics.Color.WHITE
+        SubtitleColorPreset.WARM_YELLOW -> android.graphics.Color.rgb(255, 243, 176)
+    }
+    val windowColor = when (subtitlePrefs.bgStyle) {
+        SubtitleBgStyle.NETFLIX_OUTLINE -> android.graphics.Color.TRANSPARENT
+        SubtitleBgStyle.SMART_ADAPTIVE -> android.graphics.Color.argb(90, 0, 0, 0)
+        SubtitleBgStyle.DARK_BOX -> android.graphics.Color.argb(195, 0, 0, 0)
+    }
+    val bottomFraction = (subtitlePrefs.bottomMarginPercent / 100f).coerceIn(0.04f, 0.38f)
+    val scaledSp = (18f * subtitlePrefs.fontScale).coerceIn(13f, 30f)
 
     AndroidView(
         factory = { ctx ->
@@ -320,21 +341,37 @@ actual fun PlatformVideoSurface(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 subtitleView?.apply {
-                    val captionStyle = CaptionStyleCompat(
-                        android.graphics.Color.WHITE,
-                        android.graphics.Color.TRANSPARENT,
-                        android.graphics.Color.TRANSPARENT,
-                        CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                        android.graphics.Color.BLACK,
-                        null
+                    setStyle(
+                        CaptionStyleCompat(
+                            fgColor,
+                            windowColor,
+                            android.graphics.Color.TRANSPARENT,
+                            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                            android.graphics.Color.BLACK,
+                            null
+                        )
                     )
-                    setStyle(captionStyle)
-                    setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                    setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp)
+                    setBottomPaddingFraction(bottomFraction)
                 }
             }
         },
         update = { playerView ->
             playerView.resizeMode = exoResizeMode
+            playerView.subtitleView?.apply {
+                setStyle(
+                    CaptionStyleCompat(
+                        fgColor,
+                        windowColor,
+                        android.graphics.Color.TRANSPARENT,
+                        CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                        android.graphics.Color.BLACK,
+                        null
+                    )
+                )
+                setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSp)
+                setBottomPaddingFraction(bottomFraction)
+            }
         },
         modifier = modifier
     )

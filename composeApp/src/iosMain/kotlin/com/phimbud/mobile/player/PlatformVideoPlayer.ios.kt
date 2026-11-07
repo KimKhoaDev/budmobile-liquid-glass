@@ -349,7 +349,8 @@ actual fun rememberPlatformPlayerController(
 actual fun PlatformPlayerWindowEffect(
     showSubtitleDialog: Boolean,
     showServerDialog: Boolean,
-    controlsVisible: Boolean
+    controlsVisible: Boolean,
+    onUserMouseActivity: () -> Unit
 ) {
     DisposableEffect(Unit) {
         // 1. Enable audio playback even when iPhone hardware Silent switch is muted
@@ -405,10 +406,19 @@ private fun requestIosInterfaceOrientation(landscape: Boolean) {
 }
 
 @Composable
+actual fun PlatformPlayerShortcutEffect(
+    enabled: Boolean,
+    onAction: (PlayerShortcutAction) -> Unit
+) = Unit
+
+@Composable
 actual fun PlatformVideoSurface(
     controller: PlatformPlayerController,
     resizeMode: VideoResizeMode,
     activeSubtitle: CachedSubtitle?,
+    subtitlePrefs: SubtitlePreferences,
+    subtitleDelayMs: Long,
+    onSubtitleBottomMarginChanged: (Float) -> Unit,
     controlsVisible: Boolean,
     modifier: Modifier
 ) {
@@ -459,8 +469,10 @@ actual fun PlatformVideoSurface(
             IosSubtitleOverlay(
                 iosController = iosController,
                 parsedCues = parsedCues,
+                subtitlePrefs = subtitlePrefs,
+                subtitleDelayMs = subtitleDelayMs,
                 controlsVisible = controlsVisible,
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
@@ -478,32 +490,68 @@ private val IosSubtitleTextStyle = TextStyle(
 private fun IosSubtitleOverlay(
     iosController: IosAvPlayerController,
     parsedCues: List<SubtitleCue>,
+    subtitlePrefs: SubtitlePreferences,
+    subtitleDelayMs: Long,
     controlsVisible: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val activeCueText by remember(iosController, parsedCues) {
+    val activeState by remember(iosController, parsedCues, subtitleDelayMs) {
         derivedStateOf {
-            SrtParser.findActiveText(parsedCues, iosController.livePositionMs)
+            val adjustedPosMs = (iosController.livePositionMs - subtitleDelayMs).coerceAtLeast(0L)
+            SrtParser.findActiveState(parsedCues, adjustedPosMs)
         }
     }
 
-    if (!activeCueText.isNullOrBlank()) {
-        val bottomPad = if (controlsVisible) 88.dp else 26.dp
-        Box(
-            modifier = modifier
-                .padding(start = 32.dp, end = 32.dp, bottom = bottomPad)
-                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                .padding(horizontal = 12.dp, vertical = 5.dp)
-        ) {
-            Text(
-                text = activeCueText.orEmpty(),
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                lineHeight = 24.sp,
-                style = IosSubtitleTextStyle
-            )
+    if (!activeState.hasAnyText) return
+
+    val scaledFontSp = (18f * subtitlePrefs.fontScale).coerceIn(13f, 30f).sp
+    val scaledLineSp = (24f * subtitlePrefs.fontScale).coerceIn(18f, 40f).sp
+    val bgAlpha = SmartSubtitleCalculator.computeBackdropAlpha(subtitlePrefs.bgStyle, 0.35f)
+
+    Box(modifier = modifier) {
+        val topText = activeState.topText
+        if (!topText.isNullOrBlank()) {
+            val topPad = if (controlsVisible) 68.dp else 20.dp
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(start = 32.dp, end = 32.dp, top = topPad)
+                    .background(Color.Black.copy(alpha = bgAlpha), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 12.dp, vertical = 5.dp)
+            ) {
+                Text(
+                    text = topText,
+                    color = subtitlePrefs.colorPreset.color,
+                    fontSize = scaledFontSp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    lineHeight = scaledLineSp,
+                    style = IosSubtitleTextStyle
+                )
+            }
+        }
+
+        val bottomText = activeState.bottomText
+        if (!bottomText.isNullOrBlank()) {
+            val userBottomDp = (subtitlePrefs.bottomMarginPercent * 3.0f).coerceIn(18f, 120f).dp
+            val bottomPad = if (controlsVisible) maxOf(88.dp, userBottomDp) else userBottomDp
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 32.dp, end = 32.dp, bottom = bottomPad)
+                    .background(Color.Black.copy(alpha = bgAlpha), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 12.dp, vertical = 5.dp)
+            ) {
+                Text(
+                    text = bottomText,
+                    color = subtitlePrefs.colorPreset.color,
+                    fontSize = scaledFontSp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    lineHeight = scaledLineSp,
+                    style = IosSubtitleTextStyle
+                )
+            }
         }
     }
 }

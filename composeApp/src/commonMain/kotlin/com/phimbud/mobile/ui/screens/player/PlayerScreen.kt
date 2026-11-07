@@ -80,6 +80,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -93,10 +94,16 @@ import com.phimbud.mobile.core.model.WatchInfo
 import com.phimbud.mobile.core.platform.PlatformBackHandler
 import com.phimbud.mobile.core.platform.formatPlaybackTime
 import com.phimbud.mobile.player.PlatformPlayerController
+import com.phimbud.mobile.player.PlatformPlayerShortcutEffect
 import com.phimbud.mobile.player.PlatformPlayerWindowEffect
 import com.phimbud.mobile.player.PlatformVideoSurface
+import com.phimbud.mobile.player.PlayerShortcutAction
 import com.phimbud.mobile.player.SkipSegment
 import com.phimbud.mobile.player.SkipSegmentType
+import com.phimbud.mobile.player.SubtitleBgStyle
+import com.phimbud.mobile.player.SubtitleColorPreset
+import com.phimbud.mobile.player.SubtitlePreferences
+import com.phimbud.mobile.player.SubtitlePreferencesStore
 import com.phimbud.mobile.player.VideoResizeMode
 import com.phimbud.mobile.player.rememberPlatformPlayerController
 import com.phimbud.mobile.ui.theme.NetflixBlack
@@ -106,6 +113,7 @@ import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 @Composable
 fun PlayerScreen(
@@ -115,6 +123,17 @@ fun PlayerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val controller = rememberPlatformPlayerController(viewModel.repository)
+    val subtitlePrefsStore = remember(viewModel.repository) {
+        SubtitlePreferencesStore(viewModel.repository.platformContext)
+    }
+    var subtitlePrefs by remember(subtitlePrefsStore) {
+        mutableStateOf(subtitlePrefsStore.load())
+    }
+    fun updateSubtitlePrefs(updated: SubtitlePreferences) {
+        val norm = updated.normalized()
+        subtitlePrefs = norm
+        subtitlePrefsStore.save(norm)
+    }
 
     var controlsVisible by remember { mutableStateOf(true) }
     var controlsInteractionTick by remember { mutableIntStateOf(0) }
@@ -124,6 +143,25 @@ fun PlayerScreen(
     var showServerDialog by remember { mutableStateOf(false) }
     var showEpisodesOverlay by remember { mutableStateOf(false) }
 
+    var osdIcon by remember { mutableStateOf<ImageVector?>(null) }
+    var osdLabel by remember { mutableStateOf("") }
+    var osdTick by remember { mutableIntStateOf(0) }
+    var osdVisible by remember { mutableStateOf(false) }
+
+    fun triggerShortcutOsd(icon: ImageVector, label: String) {
+        osdIcon = icon
+        osdLabel = label
+        osdTick++
+    }
+
+    LaunchedEffect(osdTick) {
+        if (osdTick > 0) {
+            osdVisible = true
+            delay(1000L)
+            osdVisible = false
+        }
+    }
+
     PlatformBackHandler(enabled = !showEpisodesOverlay && !showSubtitleDialog && !showServerDialog) {
         onBackClick()
     }
@@ -132,10 +170,21 @@ fun PlayerScreen(
         showEpisodesOverlay = false
     }
 
+    PlatformBackHandler(enabled = showSubtitleDialog || showServerDialog) {
+        showSubtitleDialog = false
+        showServerDialog = false
+    }
+
     PlatformPlayerWindowEffect(
         showSubtitleDialog = showSubtitleDialog,
         showServerDialog = showServerDialog || showEpisodesOverlay,
-        controlsVisible = controlsVisible
+        controlsVisible = controlsVisible,
+        onUserMouseActivity = {
+            if (!showEpisodesOverlay && !showSubtitleDialog && !showServerDialog) {
+                controlsVisible = true
+                controlsInteractionTick++
+            }
+        }
     )
 
     val isInPipMode = controller.isInPipMode
@@ -176,6 +225,9 @@ fun PlayerScreen(
     }
 
     val readyState = uiState as? PlayerUiState.Ready
+    var subtitleDelayMs by remember(readyState?.watchInfo?.fid, readyState?.activeSubtitle?.id) {
+        mutableLongStateOf(0L)
+    }
 
     // Load or update HLS stream & subtitle only when actual media/subtitle inputs change
     LaunchedEffect(
@@ -237,6 +289,48 @@ fun PlayerScreen(
         }
     }
 
+    val playbackErr = controller.playbackError
+    val activeErrorMessage = (uiState as? PlayerUiState.Error)?.message ?: playbackErr
+
+    PlatformPlayerShortcutEffect(
+        enabled = !isLocked &&
+            !showEpisodesOverlay &&
+            !showSubtitleDialog &&
+            !showServerDialog &&
+            !isInPipMode &&
+            activeErrorMessage == null &&
+            readyState != null,
+        onAction = { action ->
+            when (action) {
+                PlayerShortcutAction.TOGGLE_PLAY_PAUSE -> {
+                    if (controller.isPlaying) {
+                        controller.pause()
+                        triggerShortcutOsd(Icons.Default.Pause, "Tạm dừng")
+                    } else {
+                        controller.play()
+                        triggerShortcutOsd(Icons.Default.PlayArrow, "Tiếp tục")
+                    }
+                    if (controlsVisible) controlsInteractionTick++
+                }
+                PlayerShortcutAction.SEEK_BACKWARD_10S -> {
+                    val targetPos = (controller.currentPositionMs() - 10_000L).coerceAtLeast(0L)
+                    controller.seekTo(targetPos)
+                    triggerShortcutOsd(Icons.Default.Replay10, "-10s • ${formatPlaybackTime(targetPos)}")
+                    if (controlsVisible) controlsInteractionTick++
+                }
+                PlayerShortcutAction.SEEK_FORWARD_10S -> {
+                    val knownDurMs = (readyState?.watchInfo?.durationSeconds?.times(1000.0)?.toLong() ?: 0L)
+                        .coerceAtLeast(controller.durationMs)
+                    val maxDur = knownDurMs.takeIf { it > 0L } ?: Long.MAX_VALUE
+                    val targetPos = (controller.currentPositionMs() + 10_000L).coerceAtMost(maxDur)
+                    controller.seekTo(targetPos)
+                    triggerShortcutOsd(Icons.Default.Forward10, "+10s • ${formatPlaybackTime(targetPos)}")
+                    if (controlsVisible) controlsInteractionTick++
+                }
+            }
+        }
+    )
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -252,14 +346,58 @@ fun PlayerScreen(
                 }
             }
     ) {
-        // Native Video Surface (ExoPlayer on Android, AVPlayer + Subtitle Overlay on iOS)
+        // Native Video Surface (ExoPlayer on Android, AVPlayer + Subtitle Overlay on iOS, FFmpeg + Smart Sub on Desktop)
         PlatformVideoSurface(
             controller = controller,
             resizeMode = resizeMode,
             activeSubtitle = readyState?.activeSubtitleData,
+            subtitlePrefs = subtitlePrefs,
+            subtitleDelayMs = subtitleDelayMs,
+            onSubtitleBottomMarginChanged = { newMargin ->
+                updateSubtitlePrefs(subtitlePrefs.copy(bottomMarginPercent = newMargin))
+            },
             controlsVisible = controlsVisible && !showEpisodesOverlay,
             modifier = Modifier.fillMaxSize()
         )
+
+        // Compact Netflix-style Keyboard Shortcut OSD Pill (does not darken movie frame)
+        AnimatedVisibility(
+            visible = osdVisible && !isInPipMode && activeErrorMessage == null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .displayCutoutPadding()
+                .padding(top = if (controlsVisible && !isLocked) 74.dp else 26.dp)
+        ) {
+            val icon = osdIcon
+            if (icon != null && osdLabel.isNotBlank()) {
+                Surface(
+                    color = NetflixDarkGray.copy(alpha = 0.88f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = NetflixRed,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = osdLabel,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
 
         // Loading / Buffering indicator
         if (uiState is PlayerUiState.Loading || (uiState is PlayerUiState.Ready && controller.isBuffering)) {
@@ -269,8 +407,6 @@ fun PlayerScreen(
         }
 
         // Error state overlay (handles both API errors and HLS playback errors)
-        val playbackErr = controller.playbackError
-        val activeErrorMessage = (uiState as? PlayerUiState.Error)?.message ?: playbackErr
         if (activeErrorMessage != null && !isInPipMode) {
             Box(
                 modifier = Modifier
@@ -662,7 +798,7 @@ fun PlayerScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 240.dp)
+                            .heightIn(max = 380.dp)
                             .verticalScroll(rememberScrollState())
                     ) {
                         val isNoneActive = readyState?.activeSubtitle == null
@@ -790,6 +926,19 @@ fun PlayerScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.6f), thickness = 0.8.dp)
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        SubtitleStyleCustomizerSection(
+                            prefs = subtitlePrefs,
+                            subtitleDelayMs = subtitleDelayMs,
+                            onSubtitleDelayChanged = { newDelay ->
+                                subtitleDelayMs = newDelay.coerceIn(-15_000L, 15_000L)
+                            },
+                            onPrefsChanged = ::updateSubtitlePrefs
+                        )
                     }
                 },
                 confirmButton = {
@@ -1441,5 +1590,330 @@ private fun PlayerBottomBar(
             ),
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+private fun formatSubtitleDelayLabel(delayMs: Long): String {
+    if (delayMs == 0L) return "0.00s"
+    val centiSec = kotlin.math.abs(delayMs) / 10L
+    val whole = centiSec / 100L
+    val frac = (centiSec % 100L).toString().padStart(2, '0')
+    return if (delayMs > 0L) "Trễ +$whole.${frac}s" else "Sớm -$whole.${frac}s"
+}
+
+@Composable
+private fun SubtitleStyleCustomizerSection(
+    prefs: SubtitlePreferences,
+    subtitleDelayMs: Long,
+    onSubtitleDelayChanged: (Long) -> Unit,
+    onPrefsChanged: (SubtitlePreferences) -> Unit
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "Tùy chỉnh hiển thị",
+                color = NetflixTextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            val isDefault = prefs == SubtitlePreferences() && subtitleDelayMs == 0L
+            if (!isDefault) {
+                Surface(
+                    onClick = {
+                        onPrefsChanged(SubtitlePreferences())
+                        onSubtitleDelayChanged(0L)
+                    },
+                    color = NetflixCard,
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = "Mặc định",
+                        color = NetflixTextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
+        // 0. Subtitle Timing Sync Fine-Tuning (per-episode / mistimed .srt release safeguard)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Đồng bộ tiếng",
+                    color = NetflixTextSecondary,
+                    fontSize = 13.sp
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        onClick = { onSubtitleDelayChanged(subtitleDelayMs - 250L) },
+                        color = NetflixCard,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = "-0.25s",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        )
+                    }
+                    Surface(
+                        onClick = { onSubtitleDelayChanged(0L) },
+                        color = if (subtitleDelayMs != 0L) NetflixRed.copy(alpha = 0.25f) else Color.Transparent,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = formatSubtitleDelayLabel(subtitleDelayMs),
+                            color = if (subtitleDelayMs != 0L) NetflixRed else Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
+                        )
+                    }
+                    Surface(
+                        onClick = { onSubtitleDelayChanged(subtitleDelayMs + 250L) },
+                        color = NetflixCard,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = "+0.25s",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+            if (subtitleDelayMs != 0L) {
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = if (subtitleDelayMs > 0L) {
+                        "Đang làm phụ đề hiện chậm lại (khớp khi sub chạy trước tiếng)"
+                    } else {
+                        "Đang làm phụ đề hiện sớm hơn (khớp khi sub chạy sau tiếng)"
+                    },
+                    color = Color.Gray,
+                    fontSize = 11.sp
+                )
+            }
+        }
+
+        // 1. Font Size Scale (A- / % / A+)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "Cỡ chữ",
+                color = NetflixTextSecondary,
+                fontSize = 13.sp
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    onClick = {
+                        onPrefsChanged(
+                            prefs.copy(fontScale = prefs.fontScale - SubtitlePreferences.FONT_SCALE_STEP)
+                        )
+                    },
+                    color = NetflixCard,
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = "A-",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+                Text(
+                    text = "${prefs.fontScalePercent}%",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(46.dp)
+                )
+                Surface(
+                    onClick = {
+                        onPrefsChanged(
+                            prefs.copy(fontScale = prefs.fontScale + SubtitlePreferences.FONT_SCALE_STEP)
+                        )
+                    },
+                    color = NetflixCard,
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = "A+",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+
+        // 2. Vertical Position (Height from bottom + Quick Presets)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Độ cao: ${prefs.bottomMarginPercent.roundToInt()}%",
+                    color = NetflixTextSecondary,
+                    fontSize = 13.sp
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val isCinema = prefs.bottomMarginPercent.roundToInt() ==
+                        SubtitlePreferences.DEFAULT_BOTTOM_MARGIN_PERCENT.roundToInt()
+                    val isHardsub = prefs.bottomMarginPercent.roundToInt() ==
+                        SubtitlePreferences.HARDSUB_AVOID_MARGIN_PERCENT.roundToInt()
+
+                    Surface(
+                        onClick = {
+                            onPrefsChanged(
+                                prefs.copy(bottomMarginPercent = SubtitlePreferences.DEFAULT_BOTTOM_MARGIN_PERCENT)
+                            )
+                        },
+                        color = if (isCinema) NetflixRed else NetflixCard,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = "Chuẩn",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    Surface(
+                        onClick = {
+                            onPrefsChanged(
+                                prefs.copy(bottomMarginPercent = SubtitlePreferences.HARDSUB_AVOID_MARGIN_PERCENT)
+                            )
+                        },
+                        color = if (isHardsub) NetflixRed else NetflixCard,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = "Né Hardsub",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            Slider(
+                value = prefs.bottomMarginPercent,
+                onValueChange = { newVal ->
+                    onPrefsChanged(prefs.copy(bottomMarginPercent = newVal))
+                },
+                valueRange = SubtitlePreferences.MIN_BOTTOM_MARGIN_PERCENT..SubtitlePreferences.MAX_BOTTOM_MARGIN_PERCENT,
+                colors = SliderDefaults.colors(
+                    thumbColor = NetflixRed,
+                    activeTrackColor = NetflixRed,
+                    inactiveTrackColor = Color.Gray.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Text(
+                text = "Mẹo: Có thể kéo chuột trực tiếp trên dòng phụ đề để nâng/hạ nhanh",
+                color = Color.Gray,
+                fontSize = 11.sp
+            )
+        }
+
+        // 3. Backdrop Style
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "Kiểu nền",
+                color = NetflixTextSecondary,
+                fontSize = 13.sp
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SubtitleBgStyle.entries.forEach { style ->
+                    val selected = prefs.bgStyle == style
+                    Surface(
+                        onClick = { onPrefsChanged(prefs.copy(bgStyle = style)) },
+                        color = if (selected) NetflixRed else NetflixCard,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = style.label,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. Text Color
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "Màu chữ",
+                color = NetflixTextSecondary,
+                fontSize = 13.sp
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SubtitleColorPreset.entries.forEach { preset ->
+                    val selected = prefs.colorPreset == preset
+                    Surface(
+                        onClick = { onPrefsChanged(prefs.copy(colorPreset = preset)) },
+                        color = if (selected) NetflixRed else NetflixCard,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = preset.label,
+                            color = if (selected) Color.White else preset.color,
+                            fontSize = 11.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }

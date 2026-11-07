@@ -30,14 +30,88 @@ internal class DesktopFfmpegPlayer(
     private val onDurationKnown: (Long) -> Unit,
     private val onPositionUpdated: (Long) -> Unit,
     private val onPlaybackEnded: () -> Unit,
-    private val onPlaybackError: (String) -> Unit
+    private val onPlaybackError: (String) -> Unit,
+    private val onBottomLuminanceChanged: (Float) -> Unit = {}
 ) {
     companion object {
+        /**
+         * Compensates downstream audio output latency beyond Java Sound's DirectSound ring buffer
+         * (DirectSound -> Windows WASAPI audiodg.exe shared-mode session + audio endpoint FIFO).
+         */
+        private const val WINDOWS_AUDIO_PIPELINE_LATENCY_US = 85_000L
+
         init {
             runCatching {
                 FFmpegLogCallback.set()
                 avutil.av_log_set_level(avutil.AV_LOG_ERROR)
             }
+        }
+
+        /**
+         * Extracts the container's initial timestamp offset in microseconds (`AVFormatContext.start_time()`).
+         * JavaCV's `FFmpegFrameGrabber.grab()` reports raw un-normalized stream PTS (`pts + start_time`),
+         * whereas `setTimestamp()` and `.srt` subtitle files use 0-based media timestamps.
+         * In MPEG-TS / HLS streams, `start_time` is typically +1.4s to +10.0s.
+         */
+        internal fun resolveStreamStartOffsetUs(g: FFmpegFrameGrabber): Long {
+            val oc = g.formatContext ?: return 0L
+            val containerStart = oc.start_time()
+            if (containerStart != avutil.AV_NOPTS_VALUE) {
+                return containerStart
+            }
+            var minStreamStartUs = Long.MAX_VALUE
+            val nbStreams = oc.nb_streams()
+            for (i in 0 until nbStreams) {
+                val st = oc.streams(i) ?: continue
+                val stStart = st.start_time()
+                val tb = st.time_base()
+                if (stStart != avutil.AV_NOPTS_VALUE && tb != null && tb.den() > 0) {
+                    val startUs = (stStart * 1_000_000L * tb.num().toLong()) / tb.den().toLong()
+                    if (startUs < minStreamStartUs) {
+                        minStreamStartUs = startUs
+                    }
+                }
+            }
+            return if (minStreamStartUs != Long.MAX_VALUE) minStreamStartUs else 0L
+        }
+
+        /**
+         * Samples a sparse 24x6 grid in the subtitle safe zone (x: 22%..78%, y: 78%..93%)
+         * from a BGRA_8888 frame buffer and computes normalized Rec.709 luminance in [0f..1f].
+         */
+        internal fun sampleBottomBandLuminance(bgraBytes: ByteArray, width: Int, height: Int): Float {
+            if (width <= 8 || height <= 8 || bgraBytes.size < width * height * 4) {
+                return 0.25f
+            }
+            val cols = 24
+            val rows = 6
+            val xStart = (width * 0.22f).toInt().coerceIn(0, width - 1)
+            val xEnd = (width * 0.78f).toInt().coerceIn(xStart + 1, width)
+            val yStart = (height * 0.78f).toInt().coerceIn(0, height - 1)
+            val yEnd = (height * 0.93f).toInt().coerceIn(yStart + 1, height)
+
+            val xSpan = (xEnd - xStart).coerceAtLeast(1)
+            val ySpan = (yEnd - yStart).coerceAtLeast(1)
+
+            var lumaSum = 0L
+            var count = 0
+            for (r in 0 until rows) {
+                val y = (yStart + (r * ySpan) / rows).coerceIn(0, height - 1)
+                val rowByteBase = y * width * 4
+                for (c in 0 until cols) {
+                    val x = (xStart + (c * xSpan) / cols).coerceIn(0, width - 1)
+                    val pxOffset = rowByteBase + x * 4
+                    if (pxOffset + 2 < bgraBytes.size) {
+                        val b = bgraBytes[pxOffset].toInt() and 0xFF
+                        val g = bgraBytes[pxOffset + 1].toInt() and 0xFF
+                        val red = bgraBytes[pxOffset + 2].toInt() and 0xFF
+                        lumaSum += ((54 * red + 183 * g + 19 * b) ushr 8).toLong()
+                        count++
+                    }
+                }
+            }
+            if (count == 0) return 0.25f
+            return ((lumaSum.toFloat() / count.toFloat()) / 255f).coerceIn(0f, 1f)
         }
     }
 
@@ -155,9 +229,9 @@ internal class DesktopFfmpegPlayer(
         private val audioClockUs = AtomicLong(initialResumeMs * 1000L)
         private val hasAudioStream = AtomicBoolean(false)
 
-        private val videoQueue = ArrayBlockingQueue<VideoPacket>(20)
-        private val audioQueue = ArrayBlockingQueue<AudioPacket>(48)
-        private val byteArrayPool = ArrayBlockingQueue<ByteArray>(28)
+        private val videoQueue = ArrayBlockingQueue<VideoPacket>(28)
+        private val audioQueue = ArrayBlockingQueue<AudioPacket>(64)
+        private val byteArrayPool = ArrayBlockingQueue<ByteArray>(36)
 
         @Volatile
         private var soundLine: SourceDataLine? = null
@@ -260,9 +334,29 @@ internal class DesktopFfmpegPlayer(
             if (hasAudioStream.get() && line != null && bps > 0L) {
                 val bufferedBytes = (line.bufferSize - line.available()).coerceAtLeast(0)
                 val bufferedUs = (bufferedBytes.toLong() * 1_000_000L) / bps
-                return (baseUs - bufferedUs).coerceAtLeast(0L)
+                val pipelineCompensationUs = if (line.isRunning && bufferedBytes > 0) {
+                    WINDOWS_AUDIO_PIPELINE_LATENCY_US
+                } else {
+                    0L
+                }
+                return (baseUs - bufferedUs - pipelineCompensationUs).coerceAtLeast(0L)
             }
             return baseUs
+        }
+
+        private fun seekGrabberNormalized(
+            g: FFmpegFrameGrabber,
+            targetZeroBasedUs: Long,
+            streamStartOffsetUs: Long
+        ) {
+            val oc = g.formatContext
+            val grabberTargetUs = if (oc != null && oc.start_time() == avutil.AV_NOPTS_VALUE && streamStartOffsetUs != 0L) {
+                (targetZeroBasedUs + streamStartOffsetUs).coerceAtLeast(0L)
+            } else {
+                targetZeroBasedUs.coerceAtLeast(0L)
+            }
+            runCatching { g.setTimestamp(grabberTargetUs, false) }
+                .recoverCatching { g.setTimestamp(grabberTargetUs) }
         }
 
         private fun runDemuxLoop() {
@@ -286,6 +380,8 @@ internal class DesktopFfmpegPlayer(
 
                 g.start()
                 if (stopped.get()) return
+
+                val streamStartOffsetUs = resolveStreamStartOffsetUs(g)
 
                 val durUs = g.lengthInTime
                 if (durUs > 0L) {
@@ -323,12 +419,23 @@ internal class DesktopFfmpegPlayer(
 
                 if (initialResumeMs > 1_000L) {
                     val resumeUs = initialResumeMs * 1000L
-                    runCatching { g.setTimestamp(resumeUs, false) }
-                        .recoverCatching { g.setTimestamp(resumeUs) }
+                    seekGrabberNormalized(g, resumeUs, streamStartOffsetUs)
                     audioClockUs.set(resumeUs)
                 }
 
+                val defaultFrameDurUs = if (g.frameRate > 1.0 && g.frameRate.isFinite()) {
+                    (1_000_000.0 / g.frameRate).toLong().coerceIn(8_000L, 100_000L)
+                } else {
+                    41_667L
+                }
+
                 var firstPacketDelivered = false
+                var clockAnchoredForGen = false
+                var lastVideoPtsUs = -1L
+                var lastAudioEndPtsUs = -1L
+                var lastLuminanceSampleNs = 0L
+                var smoothedLuminance = 0.25f
+                var lastReportedLuminance = -1f
 
                 while (!stopped.get() && !Thread.currentThread().isInterrupted) {
                     val seekTargetUs = requestedSeekUs.getAndSet(-1L)
@@ -336,10 +443,16 @@ internal class DesktopFfmpegPlayer(
                         demuxReachedEof.set(false)
                         clearQueuesAndRecycle()
                         runCatching { soundLine?.flush() }
-                        runCatching { g.setTimestamp(seekTargetUs, false) }
-                            .recoverCatching { g.setTimestamp(seekTargetUs) }
+                        seekGrabberNormalized(g, seekTargetUs, streamStartOffsetUs)
                         audioClockUs.set(seekTargetUs)
                         firstPacketDelivered = false
+                        clockAnchoredForGen = false
+                        lastVideoPtsUs = -1L
+                        lastAudioEndPtsUs = -1L
+                        // If user pressed ← / → again while setTimestamp was in flight, jump straight to newest target!
+                        if (requestedSeekUs.get() >= 0L) {
+                            continue
+                        }
                     }
 
                     val genBeforeGrab = seekGeneration.get()
@@ -369,9 +482,16 @@ internal class DesktopFfmpegPlayer(
                         continue
                     }
 
-                    val ptsUs = frame.timestamp.coerceAtLeast(0L)
+                    val rawTsUs = frame.timestamp
 
                     if (frame.image != null && frame.image.isNotEmpty()) {
+                        val ptsUs = if (rawTsUs == 0L && streamStartOffsetUs > 0L && lastVideoPtsUs >= 0L) {
+                            lastVideoPtsUs + defaultFrameDurUs
+                        } else {
+                            (rawTsUs - streamStartOffsetUs).coerceAtLeast(0L)
+                        }
+                        lastVideoPtsUs = ptsUs
+
                         val srcBuf = frame.image[0] as? ByteBuffer
                         val w = frame.imageWidth
                         val h = frame.imageHeight
@@ -401,6 +521,28 @@ internal class DesktopFfmpegPlayer(
                             }
 
                             if (copiedOk) {
+                                val nowNs = System.nanoTime()
+                                if (nowNs - lastLuminanceSampleNs >= 250_000_000L) {
+                                    lastLuminanceSampleNs = nowNs
+                                    val measured = sampleBottomBandLuminance(dst, w, h)
+                                    smoothedLuminance = if (lastReportedLuminance < 0f) {
+                                        measured
+                                    } else {
+                                        smoothedLuminance * 0.65f + measured * 0.35f
+                                    }
+                                    val quantized = (kotlin.math.round(smoothedLuminance * 20f) / 20f).coerceIn(0f, 1f)
+                                    if (kotlin.math.abs(quantized - lastReportedLuminance) >= 0.05f) {
+                                        lastReportedLuminance = quantized
+                                        notifyLuminance(quantized)
+                                    }
+                                }
+
+                                if (!hasAudioStream.get() && !clockAnchoredForGen && genBeforeGrab == seekGeneration.get()) {
+                                    clockAnchoredForGen = true
+                                    audioClockUs.set(ptsUs)
+                                    notifyPosition(ptsUs / 1000L)
+                                }
+
                                 val vp = VideoPacket(w, h, dst, ptsUs, genBeforeGrab)
                                 while (!stopped.get() && genBeforeGrab == seekGeneration.get()) {
                                     if (videoQueue.offer(vp, 40L, TimeUnit.MILLISECONDS)) {
@@ -433,6 +575,19 @@ internal class DesktopFfmpegPlayer(
                                 }
                                 val bps = audioBytesPerSecond.coerceAtLeast(1L)
                                 val packetDurUs = (pcmLen.toLong() * 1_000_000L) / bps
+                                val ptsUs = if (rawTsUs == 0L && streamStartOffsetUs > 0L && lastAudioEndPtsUs >= 0L) {
+                                    lastAudioEndPtsUs
+                                } else {
+                                    (rawTsUs - streamStartOffsetUs).coerceAtLeast(0L)
+                                }
+                                lastAudioEndPtsUs = ptsUs + packetDurUs
+
+                                if (!clockAnchoredForGen && genBeforeGrab == seekGeneration.get()) {
+                                    clockAnchoredForGen = true
+                                    audioClockUs.set(ptsUs)
+                                    notifyPosition(ptsUs / 1000L)
+                                }
+
                                 val ap = AudioPacket(pcm, pcmLen, ptsUs, packetDurUs, genBeforeGrab)
                                 while (!stopped.get() && genBeforeGrab == seekGeneration.get()) {
                                     if (audioQueue.offer(ap, 40L, TimeUnit.MILLISECONDS)) {
@@ -471,6 +626,7 @@ internal class DesktopFfmpegPlayer(
                     if (packet.generation != seekGeneration.get()) {
                         continue
                     }
+                    val bps = audioBytesPerSecond.coerceAtLeast(1L)
                     val line = soundLine
                     if (line != null && line.isOpen) {
                         var offset = 0
@@ -485,6 +641,10 @@ internal class DesktopFfmpegPlayer(
                                 Thread.sleep(5L)
                             } else {
                                 offset += written
+                                if (packet.generation == seekGeneration.get()) {
+                                    val writtenUs = (offset.toLong() * 1_000_000L) / bps
+                                    audioClockUs.set(packet.ptsUs + writtenUs)
+                                }
                             }
                         }
                     }
@@ -532,6 +692,10 @@ internal class DesktopFfmpegPlayer(
 
                     if (hasAudioStream.get() && soundLine != null) {
                         while (!stopped.get() && wantToPlay.get() && vp.generation == seekGeneration.get()) {
+                            // Safety valve: never stall demuxer if videoQueue is full while audioQueue awaits interleaved packets
+                            if (videoQueue.remainingCapacity() == 0 && audioQueue.isEmpty()) {
+                                break
+                            }
                             val masterUs = currentMasterClockUs()
                             val diffUs = vp.ptsUs - masterUs
                             if (diffUs <= 4_000L) {
@@ -628,6 +792,15 @@ internal class DesktopFfmpegPlayer(
             SwingUtilities.invokeLater {
                 if (activeSession === self && !stopped.get()) {
                     onPlaybackError(msg)
+                }
+            }
+        }
+
+        private fun notifyLuminance(lum: Float) {
+            val self = this
+            SwingUtilities.invokeLater {
+                if (activeSession === self && !stopped.get()) {
+                    onBottomLuminanceChanged(lum)
                 }
             }
         }

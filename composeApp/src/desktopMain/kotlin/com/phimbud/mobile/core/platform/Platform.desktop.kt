@@ -14,6 +14,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import coil3.ImageLoader
 import kotlinx.coroutines.launch
 import okio.Path
@@ -246,6 +254,101 @@ class DesktopBackDispatcher {
 }
 
 val LocalDesktopBackDispatcher = compositionLocalOf<DesktopBackDispatcher?> { null }
+
+enum class DesktopPlayerKey {
+    SPACE,
+    ARROW_LEFT,
+    ARROW_RIGHT,
+    F11
+}
+
+class DesktopKeyDispatcher {
+    internal class Entry(
+        var enabled: Boolean,
+        var onKey: (DesktopPlayerKey) -> Unit
+    )
+
+    private val entries = ArrayList<Entry>()
+    private val heldToggleKeys = HashSet<Key>()
+    private var lastArrowRepeatMs: Long = 0L
+
+    internal fun register(entry: Entry) {
+        entries.add(entry)
+    }
+
+    internal fun unregister(entry: Entry) {
+        entries.remove(entry)
+        if (entries.isEmpty()) {
+            heldToggleKeys.clear()
+        }
+    }
+
+    fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val isDown = when (event.type) {
+            KeyEventType.KeyDown -> true
+            KeyEventType.KeyUp -> false
+            else -> return false
+        }
+        return dispatchRawKey(
+            key = event.key,
+            isKeyDown = isDown,
+            hasModifier = event.isCtrlPressed || event.isAltPressed || event.isMetaPressed,
+            nowMs = System.currentTimeMillis()
+        )
+    }
+
+    internal fun dispatchRawKey(
+        key: Key,
+        isKeyDown: Boolean,
+        hasModifier: Boolean = false,
+        nowMs: Long = System.currentTimeMillis()
+    ): Boolean {
+        if (!isKeyDown) {
+            val wasHeldToggle = heldToggleKeys.remove(key)
+            val active = entries.lastOrNull { it.enabled }
+            return wasHeldToggle || (active != null && (key == Key.DirectionLeft || key == Key.DirectionRight))
+        }
+
+        if (hasModifier) return false
+        val active = entries.lastOrNull { it.enabled } ?: return false
+
+        return when (key) {
+            Key.Spacebar -> {
+                if (heldToggleKeys.add(Key.Spacebar)) {
+                    active.onKey(DesktopPlayerKey.SPACE)
+                }
+                true
+            }
+            Key.F11 -> {
+                if (heldToggleKeys.add(Key.F11)) {
+                    active.onKey(DesktopPlayerKey.F11)
+                }
+                true
+            }
+            Key.DirectionLeft -> {
+                if (nowMs - lastArrowRepeatMs >= SEEK_REPEAT_THROTTLE_MS) {
+                    lastArrowRepeatMs = nowMs
+                    active.onKey(DesktopPlayerKey.ARROW_LEFT)
+                }
+                true
+            }
+            Key.DirectionRight -> {
+                if (nowMs - lastArrowRepeatMs >= SEEK_REPEAT_THROTTLE_MS) {
+                    lastArrowRepeatMs = nowMs
+                    active.onKey(DesktopPlayerKey.ARROW_RIGHT)
+                }
+                true
+            }
+            else -> false
+        }
+    }
+
+    companion object {
+        internal const val SEEK_REPEAT_THROTTLE_MS = 75L
+    }
+}
+
+val LocalDesktopKeyDispatcher = compositionLocalOf<DesktopKeyDispatcher?> { null }
 
 @Composable
 actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
