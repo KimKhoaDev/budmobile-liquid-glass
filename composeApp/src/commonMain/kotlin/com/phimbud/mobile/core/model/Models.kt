@@ -1,6 +1,7 @@
 package com.phimbud.mobile.core.model
 
 import androidx.compose.runtime.Immutable
+import com.phimbud.mobile.core.platform.utcYearFromEpochMillis
 import kotlinx.serialization.Serializable
 
 object SearchNormalizer {
@@ -140,6 +141,13 @@ data class WatchInfo(
 }
 
 @Immutable
+@Serializable
+data class GenreTag(
+    val name: String,
+    val slug: String
+)
+
+@Immutable
 data class TitleDetail(
     val fid: String,
     val nameEn: String,
@@ -150,8 +158,10 @@ data class TitleDetail(
     val tmdbBackdrop: String? = null,
     val imdbRating: Double? = null,
     val genres: List<String> = emptyList(),
+    val genreTags: List<GenreTag> = emptyList(),
     val seasons: List<Season> = emptyList(),
-    val relatedTitles: List<Movie> = emptyList()
+    val relatedTitles: List<Movie> = emptyList(),
+    val year: Int = 0
 ) {
     val displayTitle: String
         get() = nameVi.ifBlank { nameEn }
@@ -162,6 +172,12 @@ data class TitleDetail(
     val backdropUrl: String?
         get() = tmdbBackdrop?.let { "https://image.tmdb.org/t/p/w780$it" } ?: posterUrl
 }
+
+@Immutable
+data class BrowsePageResult(
+    val titles: List<Movie> = emptyList(),
+    val nextPage: Int? = null
+)
 
 @Immutable
 data class HomeFeed(
@@ -243,5 +259,199 @@ data class Top10Lists(
             }
             HomeFilterMode.ALL -> emptyList()
         }
+    }
+}
+
+@Immutable
+@Serializable
+data class BrowseFilter(
+    val type: String? = null,
+    val genre: String? = null,
+    val country: String? = null,
+    val year: String? = null,
+    val duration: String? = null,
+    val sort: String? = null
+) {
+    val isActive: Boolean
+        get() = !type.isNullOrBlank() ||
+            !genre.isNullOrBlank() ||
+            !country.isNullOrBlank() ||
+            !year.isNullOrBlank() ||
+            !duration.isNullOrBlank() ||
+            !sort.isNullOrBlank()
+
+    val activeCount: Int
+        get() {
+            var count = 0
+            if (!type.isNullOrBlank()) count++
+            if (!genre.isNullOrBlank()) count++
+            if (!country.isNullOrBlank()) count++
+            if (!year.isNullOrBlank()) count++
+            if (!duration.isNullOrBlank()) count++
+            if (!sort.isNullOrBlank()) count++
+            return count
+        }
+}
+
+data class FilterOption(
+    val label: String,
+    val value: String?
+)
+
+object BrowseFilterOptions {
+
+    val TYPE_OPTIONS = listOf(
+        FilterOption("- Tất cả -", null),
+        FilterOption("Phim Lẻ", "movie"),
+        FilterOption("Phim Bộ", "show")
+    )
+
+    val GENRE_OPTIONS = listOf(
+        FilterOption("- Tất cả -", null),
+        FilterOption("Âm nhạc", "am-nhac"),
+        FilterOption("Bí ẩn", "bi-an"),
+        FilterOption("Chiến tranh", "chien-tranh"),
+        FilterOption("Chiến tranh & Chính trị", "chien-tranh-chinh-tri"),
+        FilterOption("Chính kịch", "chinh-kich"),
+        FilterOption("Gia đình", "gia-dinh"),
+        FilterOption("Giật gân", "giat-gan"),
+        FilterOption("Hài", "hai"),
+        FilterOption("Hành động", "hanh-dong"),
+        FilterOption("Hành động & Phiêu lưu", "hanh-dong-phieu-luu"),
+        FilterOption("Hoạt hình", "hoat-hinh"),
+        FilterOption("Kinh dị", "kinh-di"),
+        FilterOption("Kỳ ảo", "ky-ao"),
+        FilterOption("Lãng mạn", "lang-man"),
+        FilterOption("Lịch sử", "lich-su"),
+        FilterOption("Phiêu lưu", "phieu-luu"),
+        FilterOption("Tài liệu", "tai-lieu"),
+        FilterOption("Thực tế", "thuc-te"),
+        FilterOption("Tội phạm", "toi-pham"),
+        FilterOption("Trẻ em", "tre-em"),
+        FilterOption("Truyền hình", "truyen-hinh"),
+        FilterOption("Viễn Tây", "vien-tay"),
+        FilterOption("Viễn tưởng", "vien-tuong"),
+        FilterOption("Viễn tưởng & Thần thoại", "vien-tuong-than-thoai")
+    )
+
+    val COUNTRY_OPTIONS = listOf(
+        FilterOption("- Tất cả -", null),
+        FilterOption("Mỹ", "US"),
+        FilterOption("Hàn Quốc", "KR"),
+        FilterOption("Trung Quốc", "CN"),
+        FilterOption("Nhật Bản", "JP"),
+        FilterOption("Thái Lan", "TH"),
+        FilterOption("Hồng Kông", "HK"),
+        FilterOption("Anh", "GB"),
+        FilterOption("Pháp", "FR"),
+        FilterOption("Canada", "CA"),
+        FilterOption("Đài Loan", "TW"),
+        FilterOption("Ấn Độ", "IN"),
+        FilterOption("Úc", "AU"),
+        FilterOption("Việt Nam", "VN"),
+        FilterOption("Đức", "DE"),
+        FilterOption("Thụy Điển", "SE"),
+        FilterOption("Ý", "IT"),
+        FilterOption("Hungary", "HU"),
+        FilterOption("Ai-len", "IE"),
+        FilterOption("Malta", "MT"),
+        FilterOption("New Zealand", "NZ"),
+        FilterOption("Nga", "RU"),
+        FilterOption("Iceland", "IS"),
+        FilterOption("Phần Lan", "FI"),
+        FilterOption("Ma-la-uy", "MW"),
+        FilterOption("Colombia", "CO"),
+        FilterOption("Đan Mạch", "DK"),
+        FilterOption("Bỉ", "BE"),
+        FilterOption("Tây Ban Nha", "ES"),
+        FilterOption("Argentina", "AR"),
+        FilterOption("Hà Lan", "NL"),
+        FilterOption("Na Uy", "NO"),
+        FilterOption("Singapore", "SG"),
+        FilterOption("Ba Lan", "PL"),
+        FilterOption("Malaysia", "MY"),
+        FilterOption("Indonesia", "ID"),
+        FilterOption("Iran", "IR"),
+        FilterOption("Puerto Rico", "PR"),
+        FilterOption("Nepal", "NP"),
+        FilterOption("Bulgaria", "BG"),
+        FilterOption("Campuchia", "KH"),
+        FilterOption("Philippines", "PH"),
+        FilterOption("Thổ Nhĩ Kỳ", "TR"),
+        FilterOption("Morocco", "MA"),
+        FilterOption("Brazil", "BR"),
+        FilterOption("Mexico", "MX"),
+        FilterOption("Séc", "CZ"),
+        FilterOption("Rumani", "RO"),
+        FilterOption("Palestine", "PS"),
+        FilterOption("Kazakhstan", "KZ"),
+        FilterOption("Nam Phi", "ZA"),
+        FilterOption("Áo", "AT"),
+        FilterOption("Thụy Sĩ", "CH"),
+        FilterOption("Ả Rập Xê-út", "SA")
+    )
+
+    fun getYearOptions(currentYear: Int = utcYearFromEpochMillis()): List<FilterOption> {
+        val list = mutableListOf(FilterOption("- Tất cả -", null))
+        for (y in currentYear downTo (currentYear - 10)) {
+            list.add(FilterOption(y.toString(), y.toString()))
+        }
+        val pastYear = currentYear - 10
+        list.add(FilterOption("Trước $pastYear", "-$pastYear"))
+        return list
+    }
+
+    val DURATION_OPTIONS = listOf(
+        FilterOption("- Tất cả -", null),
+        FilterOption("Dưới 30 phút", "0-30"),
+        FilterOption("30' - 1 tiếng", "30-60"),
+        FilterOption("1 - 1.5 tiếng", "60-90"),
+        FilterOption("1.5 - 2 tiếng", "90-120"),
+        FilterOption("2 - 2.5 tiếng", "120-150"),
+        FilterOption("2.5 - 3 tiếng", "150-180"),
+        FilterOption("Trên 3 tiếng", "180-0")
+    )
+
+    val SORT_OPTIONS = listOf(
+        FilterOption("Ngày cập nhật", null),
+        FilterOption("Ngày phát hành", "publishDate"),
+        FilterOption("Điểm đánh giá", "rating")
+    )
+
+    fun resolveGenreSlug(genreNameOrSlug: String): String? {
+        val trimmed = genreNameOrSlug.trim()
+        if (trimmed.isEmpty()) return null
+
+        GENRE_OPTIONS.firstOrNull {
+            it.value != null && it.value.equals(trimmed, ignoreCase = true)
+        }?.value?.let { return it }
+
+        GENRE_OPTIONS.firstOrNull {
+            it.value != null && it.label.equals(trimmed, ignoreCase = true)
+        }?.value?.let { return it }
+
+        val normalizedInput = SearchNormalizer.normalize(trimmed)
+        if (normalizedInput.isEmpty()) return null
+
+        GENRE_OPTIONS.firstOrNull {
+            it.value != null && SearchNormalizer.normalize(it.label) == normalizedInput
+        }?.value?.let { return it }
+
+        return normalizedInput.replace(Regex("\\s+"), "-")
+    }
+
+    fun resolveYearFilterValue(year: Int, currentYear: Int = utcYearFromEpochMillis()): String? {
+        if (year <= 0) return null
+        val minIndividualYear = currentYear - 10
+        return if (year < minIndividualYear) {
+            "-$minIndividualYear"
+        } else {
+            year.toString()
+        }
+    }
+
+    fun findLabel(options: List<FilterOption>, value: String?): String? {
+        if (value.isNullOrBlank()) return null
+        return options.firstOrNull { it.value == value }?.label ?: value
     }
 }

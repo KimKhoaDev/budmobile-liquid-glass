@@ -51,12 +51,27 @@ class DetailViewModel(
                     emptyList()
                 }
 
+                val initialWishlist = repository.isInWishlist(detail.fid) || repository.isInWishlist(fid)
                 _uiState.value = DetailUiState.Success(
                     detail = detail,
                     episodes = episodes,
                     selectedSeason = firstSeason,
-                    isInWishlist = repository.isInWishlist(detail.fid) || repository.isInWishlist(fid)
+                    isInWishlist = initialWishlist
                 )
+
+                // Sync authoritative wishlist state with server
+                viewModelScope.launch {
+                    val targetFid = detail.fid.ifBlank { fid }
+                    val stateRes = repository.getCollectionState(targetFid)
+                    if (stateRes.isSuccess) {
+                        val serverStatus = stateRes.getOrNull()
+                        val isServerWishlist = serverStatus == "wishlist"
+                        val latest = _uiState.value as? DetailUiState.Success ?: return@launch
+                        if (latest.isInWishlist != isServerWishlist) {
+                            _uiState.value = latest.copy(isInWishlist = isServerWishlist)
+                        }
+                    }
+                }
             } else {
                 _uiState.value = DetailUiState.Error(
                     res.exceptionOrNull()?.message ?: "Không thể tải thông tin phim"
@@ -116,15 +131,20 @@ class DetailViewModel(
             intro = detail.intro,
             tmdbPoster = detail.tmdbPoster,
             tmdbBackdrop = detail.tmdbBackdrop,
+            year = detail.year,
             imdbRating = detail.imdbRating,
             genres = detail.genres
         )
         viewModelScope.launch {
-            repository.updateCollection(
-                fid = detail.fid,
+            val res = repository.addToCollection(
+                fid = detail.fid.ifBlank { fid },
                 status = if (nextState) "wishlist" else "",
                 movieSnapshot = movieSnapshot
             )
+            if (res.isFailure) {
+                val latest = _uiState.value as? DetailUiState.Success ?: return@launch
+                _uiState.value = latest.copy(isInWishlist = !nextState)
+            }
         }
     }
 }

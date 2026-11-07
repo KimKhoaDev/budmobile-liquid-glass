@@ -65,7 +65,12 @@ fun Top10MovieRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            ) {
                 Surface(
                     color = NetflixRed,
                     shape = RoundedCornerShape(4.dp)
@@ -75,6 +80,8 @@ fun Top10MovieRow(
                         color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -83,7 +90,9 @@ fun Top10MovieRow(
                     text = title,
                     color = NetflixTextPrimary,
                     fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -93,6 +102,8 @@ fun Top10MovieRow(
                     color = NetflixRed,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
                         .clickable { onSeeAllClick() }

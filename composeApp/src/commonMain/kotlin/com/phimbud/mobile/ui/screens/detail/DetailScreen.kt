@@ -1,10 +1,13 @@
 package com.phimbud.mobile.ui.screens.detail
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,10 +36,12 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,7 +53,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.phimbud.mobile.core.model.BrowseFilter
+import com.phimbud.mobile.core.model.BrowseFilterOptions
 import com.phimbud.mobile.core.model.Episode
+import com.phimbud.mobile.core.model.GenreTag
 import com.phimbud.mobile.core.model.Movie
 import com.phimbud.mobile.core.platform.formatOneDecimal
 import com.phimbud.mobile.ui.components.MovieRow
@@ -60,12 +68,14 @@ import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DetailScreen(
     viewModel: DetailViewModel,
     onBackClick: () -> Unit,
     onPlayClick: (String) -> Unit,
     onRelatedMovieClick: (Movie) -> Unit,
+    onFilterClick: ((BrowseFilter) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -99,6 +109,16 @@ fun DetailScreen(
             }
             is DetailUiState.Success -> {
                 val detail = state.detail
+                val genreItems = remember(detail.genreTags, detail.genres) {
+                    if (detail.genreTags.isNotEmpty()) {
+                        detail.genreTags
+                    } else {
+                        detail.genres.mapNotNull { name ->
+                            val slug = BrowseFilterOptions.resolveGenreSlug(name) ?: return@mapNotNull null
+                            GenreTag(name = name, slug = slug)
+                        }
+                    }
+                }
 
                 LazyColumn(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
                     item {
@@ -150,10 +170,15 @@ fun DetailScreen(
                                 text = detail.displayTitle,
                                 color = NetflixTextPrimary,
                                 fontSize = 24.sp,
+                                lineHeight = 30.sp,
                                 fontWeight = FontWeight.Bold
                             )
 
-                            if (detail.nameEn.isNotBlank() && detail.nameVi.isNotBlank()) {
+                            if (detail.nameEn.isNotBlank() &&
+                                detail.nameVi.isNotBlank() &&
+                                !detail.nameEn.trim().equals(detail.nameVi.trim(), ignoreCase = true)
+                            ) {
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = detail.nameEn,
                                     color = NetflixTextSecondary,
@@ -162,18 +187,19 @@ fun DetailScreen(
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            // Row 1: Core Metadata Badges (Rating, Release Year, Type, Season Count)
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 if (detail.imdbRating != null && detail.imdbRating > 0) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier
                                             .background(NetflixCard, RoundedCornerShape(4.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Star,
@@ -186,22 +212,112 @@ fun DetailScreen(
                                             text = formatOneDecimal(detail.imdbRating),
                                             color = Color.White,
                                             fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
 
-                                detail.genres.take(3).forEach { genre ->
+                                if (detail.year > 0) {
+                                    val yearFilterVal = remember(detail.year) {
+                                        BrowseFilterOptions.resolveYearFilterValue(detail.year)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(NetflixCard)
+                                            .then(
+                                                if (onFilterClick != null && yearFilterVal != null) {
+                                                    Modifier.clickable {
+                                                        onFilterClick(BrowseFilter(year = yearFilterVal))
+                                                    }
+                                                } else Modifier
+                                            )
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            text = detail.year.toString(),
+                                            color = NetflixTextPrimary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+
+                                val isShow = detail.type == "show"
+                                val typeLabel = if (isShow) "Phim Bộ" else "Phim Lẻ"
+                                val typeFilterVal = if (isShow) "show" else "movie"
+
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(NetflixCard)
+                                        .then(
+                                            if (onFilterClick != null) {
+                                                Modifier.clickable {
+                                                    onFilterClick(BrowseFilter(type = typeFilterVal))
+                                                }
+                                            } else Modifier
+                                        )
+                                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        text = typeLabel,
+                                        color = NetflixTextPrimary.copy(alpha = 0.9f),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+
+                                if (isShow && detail.seasons.size > 1) {
                                     Box(
                                         modifier = Modifier
                                             .background(NetflixCard, RoundedCornerShape(4.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
                                     ) {
                                         Text(
-                                            text = genre,
+                                            text = "${detail.seasons.size} Mùa",
                                             color = NetflixTextSecondary,
-                                            fontSize = 12.sp
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
+                                    }
+                                }
+                            }
+
+                            // Row 2: Interactive Genre Tags (FlowRow wraps whole chips cleanly, never stretches words)
+                            if (genreItems.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    genreItems.forEach { genreTag ->
+                                        Surface(
+                                            onClick = {
+                                                onFilterClick?.invoke(BrowseFilter(genre = genreTag.slug))
+                                            },
+                                            enabled = onFilterClick != null,
+                                            color = NetflixDarkGray,
+                                            shape = RoundedCornerShape(16.dp),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                                        ) {
+                                            Text(
+                                                text = genreTag.name,
+                                                color = NetflixTextPrimary.copy(alpha = 0.92f),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -228,7 +344,9 @@ fun DetailScreen(
                                 Text(
                                     text = "Phát",
                                     fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
 
@@ -253,7 +371,9 @@ fun DetailScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (state.isInWishlist) "Đã thêm vào Danh sách" else "Thêm vào Danh sách",
-                                    fontSize = 14.sp
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
 
@@ -296,7 +416,11 @@ fun DetailScreen(
                                                 selected = isSelected,
                                                 onClick = { viewModel.selectSeason(season) },
                                                 label = {
-                                                    Text("Mùa ${season.number}")
+                                                    Text(
+                                                        text = "Mùa ${season.number}",
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
                                                 },
                                                 colors = FilterChipDefaults.filterChipColors(
                                                     selectedContainerColor = NetflixRed,
@@ -399,7 +523,9 @@ fun EpisodeItem(
                 Text(
                     text = episode.airDate,
                     color = NetflixTextSecondary,
-                    fontSize = 12.sp
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }

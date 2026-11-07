@@ -123,8 +123,14 @@ object DevalueCodec {
         return UrlCipher.base64UrlEncode(payload.encodeToByteArray())
     }
 
-    fun encodeCollection(fid: String, status: String): String {
-        val payload = "[{\"fid\":1,\"status\":2},\"$fid\",\"$status\"]"
+    fun encodeCollection(fid: String, status: String): String = encodeAddToCollection(fid, status)
+
+    fun encodeAddToCollection(fid: String, status: String): String {
+        val payload = if (status.isBlank()) {
+            "[{\"fid\":1,\"status\":-1},\"$fid\"]"
+        } else {
+            "[{\"fid\":1,\"status\":2},\"$fid\",\"$status\"]"
+        }
         return UrlCipher.base64UrlEncode(payload.encodeToByteArray())
     }
 }

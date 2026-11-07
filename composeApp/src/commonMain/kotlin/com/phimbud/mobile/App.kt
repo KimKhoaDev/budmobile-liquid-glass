@@ -27,6 +27,7 @@ import coil3.compose.setSingletonImageLoaderFactory
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.request.crossfade
+import com.phimbud.mobile.core.model.BrowseFilter
 import com.phimbud.mobile.core.platform.PlatformBackHandler
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import com.phimbud.mobile.ui.components.BottomNavBar
@@ -75,6 +76,7 @@ fun App(
         val navController = rememberNavController()
         val isLoggedIn by repository.isLoggedIn.collectAsState()
         val startDestination = remember { if (repository.isLoggedIn.value) "main" else "login" }
+        var pendingBrowseFilter by remember { mutableStateOf<BrowseFilter?>(null) }
 
         NavHost(
             navController = navController,
@@ -97,6 +99,16 @@ fun App(
             composable("main") {
                 var currentTab by rememberSaveable { mutableStateOf("home") }
                 val saveableStateHolder = rememberSaveableStateHolder()
+                val browseVm = viewModel { BrowseViewModel(repository) }
+                val myListVm = viewModel { MyListViewModel(repository) }
+
+                LaunchedEffect(pendingBrowseFilter) {
+                    pendingBrowseFilter?.let { filter ->
+                        browseVm.updateFilter(filter)
+                        currentTab = "browse"
+                        pendingBrowseFilter = null
+                    }
+                }
 
                 PlatformBackHandler(enabled = currentTab != "home") {
                     currentTab = "home"
@@ -130,11 +142,18 @@ fun App(
                                         },
                                         onSearchClick = {
                                             currentTab = "search"
+                                        },
+                                        onNavigateToBrowse = { filter ->
+                                            browseVm.updateFilter(filter)
+                                            currentTab = "browse"
+                                        },
+                                        onNavigateToMyList = { tabIndex ->
+                                            myListVm.selectTab(tabIndex)
+                                            currentTab = "mylist"
                                         }
                                     )
                                 }
                                 "browse" -> {
-                                    val browseVm = viewModel { BrowseViewModel(repository) }
                                     BrowseScreen(
                                         viewModel = browseVm,
                                         onMovieClick = { movie ->
@@ -156,7 +175,9 @@ fun App(
                                     )
                                 }
                                 "mylist" -> {
-                                    val myListVm = viewModel { MyListViewModel(repository) }
+                                    LaunchedEffect(Unit) {
+                                        myListVm.refresh()
+                                    }
                                     MyListScreen(
                                         viewModel = myListVm,
                                         onMovieClick = { movie ->
@@ -197,6 +218,10 @@ fun App(
                         navController.navigate("detail/${movie.fid}") {
                             launchSingleTop = true
                         }
+                    },
+                    onFilterClick = { filter ->
+                        pendingBrowseFilter = filter
+                        navController.popBackStack("main", inclusive = false)
                     }
                 )
             }

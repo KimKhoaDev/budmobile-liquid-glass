@@ -35,6 +35,27 @@ expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
 @Composable
 expect fun PlatformSystemBarsEffect()
 
+fun utcYearFromEpochMillis(epochMillis: Long = currentTimeMillis()): Int {
+    val totalSeconds = epochMillis / 1000L
+    val secondsInDay = 86_400L
+    var days = totalSeconds / secondsInDay
+    if (totalSeconds % secondsInDay < 0) {
+        days -= 1
+    }
+    val z = days + 719468L
+    val era = (if (z >= 0) z else z - 146096L) / 146097L
+    val doe = z - era * 146097L
+    val yoe = (doe - doe / 1460L + doe / 36524L - doe / 146096L) / 365L
+    var y = yoe + era * 400L
+    val doy = doe - (365L * yoe + yoe / 4L - yoe / 100L)
+    val mp = (5L * doy + 2L) / 153L
+    val m = (mp + (if (mp < 10L) 3L else -9L)).toInt()
+    if (m <= 2) {
+        y += 1L
+    }
+    return y.toInt()
+}
+
 /**
  * Formats an epoch timestamp (ms) into PhimBud's UTC search index filename key: "yyyy-MM-dd-H.js"
  * using Howard Hinnant's civil-from-days algorithm (exact across all leap years, zero locale bugs).

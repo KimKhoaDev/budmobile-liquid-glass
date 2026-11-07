@@ -32,4 +32,18 @@ class DevalueCodecTest {
         assertNotNull(encoded)
         assertTrue(encoded.isNotEmpty())
     }
+
+    @Test
+    fun testEncodeAddToCollectionWishlist() {
+        val encoded = DevalueCodec.encodeAddToCollection("mem3", "wishlist")
+        assertNotNull(encoded)
+        assertTrue(encoded.isNotEmpty())
+    }
+
+    @Test
+    fun testEncodeAddToCollectionRemove() {
+        val encoded = DevalueCodec.encodeAddToCollection("mem3", "")
+        assertNotNull(encoded)
+        assertTrue(encoded.isNotEmpty())
+    }
 }

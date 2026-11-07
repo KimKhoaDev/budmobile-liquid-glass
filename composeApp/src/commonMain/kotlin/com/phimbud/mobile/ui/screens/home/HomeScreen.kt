@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.phimbud.mobile.core.model.BrowseFilter
 import com.phimbud.mobile.core.model.HomeFilterMode
 import com.phimbud.mobile.core.model.Movie
 import com.phimbud.mobile.core.model.Top10CategoryFilter
@@ -62,6 +63,8 @@ fun HomeScreen(
     onMovieClick: (Movie) -> Unit,
     onPlayClick: (String) -> Unit,
     onSearchClick: () -> Unit,
+    onNavigateToBrowse: (BrowseFilter) -> Unit = {},
+    onNavigateToMyList: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -131,7 +134,10 @@ fun HomeScreen(
                                 MovieRow(
                                     title = "Tiếp tục xem",
                                     movies = feed.watching,
-                                    onMovieClick = onMovieClick
+                                    onMovieClick = onMovieClick,
+                                    onSeeAllClick = {
+                                        onNavigateToMyList(1)
+                                    }
                                 )
                             }
                         }
@@ -165,28 +171,8 @@ fun HomeScreen(
                         if (feed.trending.isNotEmpty()) {
                             item(key = "row_trending", contentType = "movie_row") {
                                 MovieRow(
-                                    title = "Xu hướng thịnh hành",
+                                    title = "Thịnh hành",
                                     movies = feed.trending,
-                                    onMovieClick = onMovieClick
-                                )
-                            }
-                        }
-
-                        if (feed.updated.isNotEmpty()) {
-                            item(key = "row_updated", contentType = "movie_row") {
-                                MovieRow(
-                                    title = "Mới cập nhật",
-                                    movies = feed.updated,
-                                    onMovieClick = onMovieClick
-                                )
-                            }
-                        }
-
-                        if (feed.shows.isNotEmpty()) {
-                            item(key = "row_shows", contentType = "movie_row") {
-                                MovieRow(
-                                    title = "Phim bộ chọn lọc",
-                                    movies = feed.shows,
                                     onMovieClick = onMovieClick
                                 )
                             }
@@ -195,8 +181,34 @@ fun HomeScreen(
                         if (feed.movies.isNotEmpty()) {
                             item(key = "row_movies", contentType = "movie_row") {
                                 MovieRow(
-                                    title = "Phim lẻ đặc sắc",
+                                    title = "Phim lẻ mới",
                                     movies = feed.movies,
+                                    onMovieClick = onMovieClick,
+                                    onSeeAllClick = {
+                                        onNavigateToBrowse(BrowseFilter(type = "movie"))
+                                    }
+                                )
+                            }
+                        }
+
+                        if (feed.shows.isNotEmpty()) {
+                            item(key = "row_shows", contentType = "movie_row") {
+                                MovieRow(
+                                    title = "Phim bộ mới",
+                                    movies = feed.shows,
+                                    onMovieClick = onMovieClick,
+                                    onSeeAllClick = {
+                                        onNavigateToBrowse(BrowseFilter(type = "show"))
+                                    }
+                                )
+                            }
+                        }
+
+                        if (feed.updated.isNotEmpty()) {
+                            item(key = "row_updated", contentType = "movie_row") {
+                                MovieRow(
+                                    title = "Cập nhật mới từ Danh sách",
+                                    movies = feed.updated,
                                     onMovieClick = onMovieClick
                                 )
                             }
@@ -207,7 +219,10 @@ fun HomeScreen(
                                 MovieRow(
                                     title = "Danh sách của tôi",
                                     movies = feed.wishlist,
-                                    onMovieClick = onMovieClick
+                                    onMovieClick = onMovieClick,
+                                    onSeeAllClick = {
+                                        onNavigateToMyList(0)
+                                    }
                                 )
                             }
                         }
@@ -357,7 +372,7 @@ fun HomeScreen(
                         }
                     }
 
-                    // Primary Filter Chips: Tất cả | Top 10 Việt Nam | Top 10 Thế Giới
+                    // Primary Filter Chips: Tất cả | Top 10 Việt Nam | Top 10 Thế Giới | Phim Bộ | Phim Lẻ
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -380,6 +395,16 @@ fun HomeScreen(
                             label = "🌍 Top 10 Thế Giới",
                             selected = filterMode == HomeFilterMode.TOP10_GLOBAL,
                             onClick = { viewModel.selectFilterMode(HomeFilterMode.TOP10_GLOBAL) }
+                        )
+                        NetflixFilterPill(
+                            label = "Phim Bộ",
+                            selected = false,
+                            onClick = { onNavigateToBrowse(BrowseFilter(type = "show")) }
+                        )
+                        NetflixFilterPill(
+                            label = "Phim Lẻ",
+                            selected = false,
+                            onClick = { onNavigateToBrowse(BrowseFilter(type = "movie")) }
                         )
                     }
 
@@ -440,6 +465,8 @@ private fun NetflixFilterPill(
             color = Color.White,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
         )
     }
@@ -462,6 +489,8 @@ private fun NetflixCategoryChip(
             color = if (selected) Color.Black else NetflixTextPrimary,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
         )
     }

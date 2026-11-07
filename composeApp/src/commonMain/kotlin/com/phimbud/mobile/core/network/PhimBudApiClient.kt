@@ -1,7 +1,10 @@
 package com.phimbud.mobile.core.network
 
 import com.phimbud.mobile.core.crypto.SubtitleCipher
+import com.phimbud.mobile.core.model.BrowseFilterOptions
+import com.phimbud.mobile.core.model.BrowsePageResult
 import com.phimbud.mobile.core.model.Episode
+import com.phimbud.mobile.core.model.GenreTag
 import com.phimbud.mobile.core.model.HomeFeed
 import com.phimbud.mobile.core.model.Movie
 import com.phimbud.mobile.core.model.SearchItem
@@ -26,6 +29,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.request
 import io.ktor.http.ContentType
 import io.ktor.http.Parameters
+import io.ktor.http.URLBuilder
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
@@ -178,7 +182,8 @@ class PhimBudApiClient(context: PlatformContext) {
                 tmdbPoster = obj["tmdbPoster"]?.jsonPrimitive?.contentOrNull,
                 tmdbBackdrop = obj["tmdbBackdrop"]?.jsonPrimitive?.contentOrNull,
                 translation = obj["translation"]?.jsonPrimitive?.contentOrNull ?: "subtitle",
-                year = obj["year"]?.jsonPrimitive?.intOrNull ?: 0
+                year = obj["year"]?.jsonPrimitive?.intOrNull ?: 0,
+                imdbRating = obj["imdbRating"]?.jsonPrimitive?.doubleOrNull
             )
         }
     }
@@ -290,9 +295,19 @@ class PhimBudApiClient(context: PlatformContext) {
                         val seasonsArray = resolved["seasons"] as? JsonArray
                         val relatedArray = resolved["relatedTitles"] as? JsonArray
 
-                        val genres = genresArray?.mapNotNull { g ->
-                            (g as? JsonObject)?.get("nameVi")?.jsonPrimitive?.contentOrNull
+                        val genreTags = genresArray?.mapNotNull { g ->
+                            val gObj = g as? JsonObject ?: return@mapNotNull null
+                            val name = gObj["nameVi"]?.jsonPrimitive?.contentOrNull
+                                ?: gObj["name"]?.jsonPrimitive?.contentOrNull
+                                ?: return@mapNotNull null
+                            val rawSlug = gObj["slug"]?.jsonPrimitive?.contentOrNull
+                            val slug = rawSlug?.takeIf { it.isNotBlank() }
+                                ?: BrowseFilterOptions.resolveGenreSlug(name)
+                                ?: return@mapNotNull null
+                            GenreTag(name = name, slug = slug)
                         } ?: emptyList()
+
+                        val genres = genreTags.map { it.name }
 
                         val seasons = seasonsArray?.mapNotNull { s ->
                             val sObj = s as? JsonObject ?: return@mapNotNull null
@@ -307,6 +322,9 @@ class PhimBudApiClient(context: PlatformContext) {
                         } ?: emptyList()
 
                         val related = parseMovieList(relatedArray)
+                        val parsedYear = titleObj?.get("year")?.jsonPrimitive?.intOrNull
+                            ?: titleObj?.get("publishDate")?.jsonPrimitive?.contentOrNull?.take(4)?.toIntOrNull()
+                            ?: 0
 
                         detail = TitleDetail(
                             fid = titleObj?.get("fid")?.jsonPrimitive?.contentOrNull ?: fid,
@@ -318,8 +336,10 @@ class PhimBudApiClient(context: PlatformContext) {
                             tmdbBackdrop = titleObj?.get("tmdbBackdrop")?.jsonPrimitive?.contentOrNull,
                             imdbRating = titleObj?.get("imdbRating")?.jsonPrimitive?.doubleOrNull,
                             genres = genres,
+                            genreTags = genreTags,
                             seasons = seasons,
-                            relatedTitles = related
+                            relatedTitles = related,
+                            year = parsedYear
                         )
                     }
                 }
@@ -523,11 +543,30 @@ class PhimBudApiClient(context: PlatformContext) {
         }
     }
 
-    suspend fun getBrowsePage(page: Int = 1): Result<List<Movie>> = withContext(Dispatchers.IO) {
+    suspend fun getBrowsePage(
+        page: Int = 1,
+        type: String? = null,
+        genre: String? = null,
+        country: String? = null,
+        year: String? = null,
+        duration: String? = null,
+        sort: String? = null
+    ): Result<BrowsePageResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val url = "https://phimbud.com/api/browse?page=$page"
+            val url = URLBuilder("https://phimbud.com/api/browse").apply {
+                parameters.append("page", page.toString())
+                if (!type.isNullOrBlank()) parameters.append("type", type)
+                if (!genre.isNullOrBlank()) parameters.append("genre", genre)
+                if (!country.isNullOrBlank()) parameters.append("country", country)
+                if (!year.isNullOrBlank()) parameters.append("year", year)
+                if (!duration.isNullOrBlank()) parameters.append("duration", duration)
+                if (!sort.isNullOrBlank()) parameters.append("sort", sort)
+            }.buildString()
             val res = httpClient.get(url) {
-                header("Referer", "https://phimbud.com/")
+                header("Referer", "https://phimbud.com/browse")
+            }
+            if (res.status.value == 401 || res.request.url.encodedPath.contains("/auth/login")) {
+                throw SessionExpiredException()
             }
             if (!res.status.isSuccess()) {
                 throw Exception("HTTP ${res.status.value}: ${res.status.description}")
@@ -537,7 +576,14 @@ class PhimBudApiClient(context: PlatformContext) {
 
             val obj = json.parseToJsonElement(text).jsonObject
             val titlesArray = obj["titles"] as? JsonArray ?: JsonArray(emptyList())
-            parseMovieList(titlesArray)
+            val titles = parseMovieList(titlesArray)
+            val nextPage = if (obj.containsKey("nextPage")) {
+                val nextEl = obj["nextPage"]
+                if (nextEl == null || nextEl is JsonNull) null else nextEl.jsonPrimitive.intOrNull
+            } else {
+                if (titles.isNotEmpty()) page + 1 else null
+            }
+            BrowsePageResult(titles = titles, nextPage = nextPage)
         }
     }
 
@@ -557,19 +603,124 @@ class PhimBudApiClient(context: PlatformContext) {
         }
     }
 
-    suspend fun updateCollection(fid: String, status: String) = withContext(Dispatchers.IO) {
+    suspend fun addToCollection(fid: String, status: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val hash = hashResolver.getHash("updateCollection")
-            val payload = DevalueCodec.encodeCollection(fid, status)
-            val body = """{"payload":"$payload","refreshes":[]}"""
+            val hash = hashResolver.getHash("addToCollection")
+            val payload = DevalueCodec.encodeAddToCollection(fid, status)
+            val statePayload = DevalueCodec.encodeSingleArg(fid)
+            val refreshKey = "$hash/getCollectionState/$statePayload"
+            val body = """{"payload":"$payload","refreshes":["$refreshKey"]}"""
 
-            httpClient.post("https://phimbud.com/_app/remote/$hash/updateCollection") {
+            val res = httpClient.post("https://phimbud.com/_app/remote/$hash/addToCollection") {
                 contentType(ContentType.Application.Json)
                 header("Origin", "https://phimbud.com")
                 header("Referer", "https://phimbud.com/title/$fid")
                 header("x-sveltekit-pathname", "/title/$fid")
                 setBody(body)
             }
+
+            if (res.status.value == 401 || res.request.url.encodedPath.contains("/auth/login")) {
+                throw SessionExpiredException()
+            }
+
+            val text = res.bodyAsText()
+            if (text.contains(""""type":"redirect"""")) {
+                val redirObj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
+                val loc = redirObj?.get("location")?.jsonPrimitive?.contentOrNull
+                if (loc?.contains("/auth/login") == true) {
+                    throw SessionExpiredException()
+                }
+            }
+
+            if (!res.status.isSuccess()) {
+                throw Exception("Thao tác danh sách thất bại (${res.status.value})")
+            }
+        }
+    }
+
+    suspend fun updateCollection(fid: String, status: String): Result<Unit> = addToCollection(fid, status)
+
+    suspend fun getCollectionState(fid: String): Result<String?> = withContext(Dispatchers.IO) {
+        runCatching {
+            val hash = hashResolver.getHash("getCollectionState")
+            val payload = DevalueCodec.encodeSingleArg(fid)
+            val url = "https://phimbud.com/_app/remote/$hash/getCollectionState?payload=$payload"
+
+            val res = httpClient.get(url) {
+                header("Referer", "https://phimbud.com/title/$fid")
+                header("x-sveltekit-pathname", "/title/$fid")
+            }
+
+            if (res.status.value == 401 || res.request.url.encodedPath.contains("/auth/login")) {
+                throw SessionExpiredException()
+            }
+
+            val text = res.bodyAsText()
+            if (text.contains(""""type":"redirect"""")) {
+                val redirObj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
+                val loc = redirObj?.get("location")?.jsonPrimitive?.contentOrNull
+                if (loc?.contains("/auth/login") == true) {
+                    throw SessionExpiredException()
+                }
+            }
+
+            val resolved = DevalueCodec.extractRpcResult(text)
+            resolved?.jsonPrimitive?.contentOrNull
+        }
+    }
+
+    suspend fun getCollection(): Result<Pair<List<Movie>, List<Movie>>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val res = httpClient.get("https://phimbud.com/collection/__data.json") {
+                header("Referer", "https://phimbud.com/")
+            }
+            if (res.status.value == 401 || res.request.url.encodedPath.contains("/auth/login")) {
+                throw SessionExpiredException()
+            }
+            val text = res.bodyAsText()
+            if (text.contains(""""type":"redirect"""")) {
+                val redirObj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
+                val loc = redirObj?.get("location")?.jsonPrimitive?.contentOrNull
+                if (loc?.contains("/auth/login") == true) {
+                    throw SessionExpiredException()
+                }
+            }
+
+            val root = json.parseToJsonElement(text).jsonObject
+            val nodes = root["nodes"]?.jsonArray ?: throw Exception("No nodes in collection data")
+            if (nodes.size > 2 && nodes[2] !is JsonNull) {
+                val nodeData = nodes[2].jsonObject["data"]?.jsonArray
+                if (nodeData != null) {
+                    val resolved = DevalueCodec.unflatten(nodeData) as? JsonObject
+                    if (resolved != null) {
+                        val itemsArray = resolved["items"] as? JsonArray
+                        val wishlist = mutableListOf<Movie>()
+                        val watching = mutableListOf<Movie>()
+                        itemsArray?.forEach { elem ->
+                            val obj = elem as? JsonObject ?: return@forEach
+                            val status = obj["status"]?.jsonPrimitive?.contentOrNull
+                            val fid = obj["fid"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+                            val movie = Movie(
+                                fid = fid,
+                                nameEn = obj["nameEn"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                nameVi = obj["nameVi"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                intro = obj["intro"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                tmdbPoster = obj["tmdbPoster"]?.jsonPrimitive?.contentOrNull,
+                                tmdbBackdrop = obj["tmdbBackdrop"]?.jsonPrimitive?.contentOrNull,
+                                translation = obj["translation"]?.jsonPrimitive?.contentOrNull ?: "subtitle",
+                                year = obj["year"]?.jsonPrimitive?.intOrNull ?: 0,
+                                imdbRating = obj["imdbRating"]?.jsonPrimitive?.doubleOrNull
+                            )
+                            when (status) {
+                                "wishlist" -> wishlist.add(movie)
+                                "watching" -> watching.add(movie)
+                            }
+                        }
+                        return@runCatching Pair(wishlist, watching)
+                    }
+                }
+            }
+            Pair(emptyList(), emptyList())
         }
     }
 }

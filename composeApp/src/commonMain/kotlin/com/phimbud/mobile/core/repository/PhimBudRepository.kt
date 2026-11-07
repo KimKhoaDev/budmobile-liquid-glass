@@ -1,5 +1,7 @@
 package com.phimbud.mobile.core.repository
 
+import com.phimbud.mobile.core.model.BrowseFilter
+import com.phimbud.mobile.core.model.BrowsePageResult
 import com.phimbud.mobile.core.model.Episode
 import com.phimbud.mobile.core.model.HomeFeed
 import com.phimbud.mobile.core.model.Movie
@@ -189,10 +191,16 @@ class PhimBudRepository(val platformContext: PlatformContext) {
         res.onFailure { err ->
             if (err is SessionExpiredException) logout()
         }
-        res.onSuccess { detail ->
-            detailCache.put(fid, detail)
+        return res.map { detail ->
+            val finalDetail = if (detail.year <= 0) {
+                val fallbackYear = ensureSearchIndexLoaded().find { it.fid == fid }?.year ?: 0
+                if (fallbackYear > 0) detail.copy(year = fallbackYear) else detail
+            } else {
+                detail
+            }
+            detailCache.put(fid, finalDetail)
+            finalDetail
         }
-        return res
     }
 
     suspend fun getSeasonEpisodes(seasonFid: String, forceRefresh: Boolean = false): Result<List<Episode>> {
@@ -250,26 +258,71 @@ class PhimBudRepository(val platformContext: PlatformContext) {
         }
     }
 
-    suspend fun getBrowsePage(page: Int): Result<List<Movie>> {
-        return apiClient.getBrowsePage(page)
+    suspend fun getBrowsePage(page: Int, filter: BrowseFilter = BrowseFilter()): Result<BrowsePageResult> {
+        val res = apiClient.getBrowsePage(
+            page = page,
+            type = filter.type,
+            genre = filter.genre,
+            country = filter.country,
+            year = filter.year,
+            duration = filter.duration,
+            sort = filter.sort
+        )
+        res.onFailure { err ->
+            if (err is SessionExpiredException) logout()
+        }
+        return res
     }
 
     suspend fun syncPlaytime(fid: String, seconds: Int) {
         apiClient.setPlaytime(fid, seconds)
     }
 
-    suspend fun updateCollection(fid: String, status: String, movieSnapshot: Movie? = null) {
-        val currentFeed = _homeFeed.value
-        val updatedWishlist = if (status == "wishlist") {
-            if (currentFeed.wishlist.any { it.fid == fid } || movieSnapshot == null) {
-                currentFeed.wishlist
-            } else {
-                listOf(movieSnapshot) + currentFeed.wishlist
-            }
-        } else {
-            currentFeed.wishlist.filterNot { it.fid == fid }
+    suspend fun getCollectionState(fid: String): Result<String?> {
+        val res = apiClient.getCollectionState(fid)
+        res.onFailure { err ->
+            if (err is SessionExpiredException) logout()
         }
-        _homeFeed.value = currentFeed.copy(wishlist = updatedWishlist)
-        apiClient.updateCollection(fid, status)
+        return res
+    }
+
+    suspend fun loadCollection(): Result<Pair<List<Movie>, List<Movie>>> {
+        val res = apiClient.getCollection()
+        res.onFailure { err ->
+            if (err is SessionExpiredException) logout()
+        }
+        res.onSuccess { (wishlist, watching) ->
+            val current = _homeFeed.value
+            _homeFeed.value = current.copy(
+                wishlist = wishlist,
+                watching = if (watching.isNotEmpty()) watching else current.watching
+            )
+        }
+        return res
+    }
+
+    suspend fun addToCollection(fid: String, status: String, movieSnapshot: Movie? = null): Result<Unit> {
+        val res = apiClient.addToCollection(fid, status)
+        res.onFailure { err ->
+            if (err is SessionExpiredException) logout()
+        }
+        if (res.isSuccess) {
+            val currentFeed = _homeFeed.value
+            val updatedWishlist = if (status == "wishlist") {
+                if (currentFeed.wishlist.any { it.fid == fid } || movieSnapshot == null) {
+                    currentFeed.wishlist
+                } else {
+                    listOf(movieSnapshot) + currentFeed.wishlist
+                }
+            } else {
+                currentFeed.wishlist.filterNot { it.fid == fid }
+            }
+            _homeFeed.value = currentFeed.copy(wishlist = updatedWishlist)
+        }
+        return res
+    }
+
+    suspend fun updateCollection(fid: String, status: String, movieSnapshot: Movie? = null) {
+        addToCollection(fid, status, movieSnapshot)
     }
 }
