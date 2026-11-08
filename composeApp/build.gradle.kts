@@ -173,13 +173,21 @@ android {
 compose.desktop {
     application {
         mainClass = "com.phimbud.mobile.MainKt"
-        jvmArgs += listOf("-Dfile.encoding=UTF-8")
+        jvmArgs += listOf(
+            "-Dfile.encoding=UTF-8",
+            "-Dskiko.renderApi=DIRECT3D",
+            "-Dsun.java2d.d3d=true",
+            "-Dsun.java2d.noddraw=true",
+            "-XX:+UseG1GC",
+            "-XX:MaxGCPauseMillis=10",
+            "-XX:+ExplicitGCInvokesConcurrent"
+        )
 
         nativeDistributions {
             outputBaseDir.set(project.layout.buildDirectory.dir("release-windows"))
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
             packageName = "PhimBud"
-            packageVersion = "1.1.1"
+            packageVersion = "1.1.2"
             description = "PhimBud Windows App"
             vendor = "PhimBud"
             modules(

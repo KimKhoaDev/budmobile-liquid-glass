@@ -91,6 +91,12 @@ internal class DesktopPlayerController(
     var livePositionMs by mutableLongStateOf(0L)
         private set
 
+    var videoWidth by mutableIntStateOf(0)
+        private set
+
+    var videoHeight by mutableIntStateOf(0)
+        private set
+
     var bottomRegionLuminance by mutableFloatStateOf(0.25f)
         private set
 
@@ -128,6 +134,10 @@ internal class DesktopPlayerController(
         },
         onBottomLuminanceChanged = { lum ->
             bottomRegionLuminance = lum
+        },
+        onVideoDimensionsKnown = { w, h ->
+            videoWidth = w
+            videoHeight = h
         }
     )
 
@@ -197,6 +207,8 @@ internal class DesktopPlayerController(
         if (isNewEpisode) {
             isPlaybackEnded = false
             currentFrame = null
+            videoWidth = 0
+            videoHeight = 0
             bottomRegionLuminance = 0.25f
             durationMs = knownDurationMs
             livePositionMs = targetResumeMs.coerceAtLeast(0L)
@@ -375,15 +387,11 @@ actual fun PlatformVideoSurface(
     }
 
     Box(modifier = modifier.background(Color.Black)) {
-        val frame = desktopController.currentFrame
-        if (frame != null) {
-            Image(
-                bitmap = frame,
-                contentDescription = "Video",
-                contentScale = scale,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
+        DesktopVideoFrame(
+            desktopController = desktopController,
+            scale = scale,
+            modifier = Modifier.fillMaxSize()
+        )
 
         if (parsedCues.isNotEmpty()) {
             DesktopSmartSubtitleOverlay(
@@ -397,6 +405,23 @@ actual fun PlatformVideoSurface(
                 modifier = Modifier.fillMaxSize()
             )
         }
+    }
+}
+
+@Composable
+private fun DesktopVideoFrame(
+    desktopController: DesktopPlayerController,
+    scale: ContentScale,
+    modifier: Modifier = Modifier
+) {
+    val frame = desktopController.currentFrame
+    if (frame != null) {
+        Image(
+            bitmap = frame,
+            contentDescription = "Video",
+            contentScale = scale,
+            modifier = modifier
+        )
     }
 }
 
@@ -420,7 +445,6 @@ private fun DesktopSmartSubtitleOverlay(
 
     if (!activeState.hasAnyText) return
 
-    val frame = desktopController.currentFrame
     val density = LocalDensity.current
     val currentPrefs by rememberUpdatedState(subtitlePrefs)
     val currentOnMarginChanged by rememberUpdatedState(onSubtitleBottomMarginChanged)
@@ -430,8 +454,8 @@ private fun DesktopSmartSubtitleOverlay(
         val metrics = remember(
             maxWidth,
             maxHeight,
-            frame?.width,
-            frame?.height,
+            desktopController.videoWidth,
+            desktopController.videoHeight,
             resizeMode,
             subtitlePrefs,
             controlsVisible
@@ -439,8 +463,8 @@ private fun DesktopSmartSubtitleOverlay(
             SmartSubtitleCalculator.computeMetrics(
                 containerWidthDp = maxWidth.value,
                 containerHeightDp = maxHeight.value,
-                videoWidthPx = frame?.width ?: 0,
-                videoHeightPx = frame?.height ?: 0,
+                videoWidthPx = desktopController.videoWidth,
+                videoHeightPx = desktopController.videoHeight,
                 resizeMode = resizeMode,
                 prefs = subtitlePrefs,
                 controlsVisible = controlsVisible

@@ -239,6 +239,7 @@ class DesktopPlatformAndPlayerTest {
         val frameCount = AtomicInteger(0)
         val latestBitmap = AtomicReference<ImageBitmap?>(null)
         val playbackErrorRef = AtomicReference<String?>(null)
+        val reportedDimsRef = AtomicReference<Pair<Int, Int>?>(null)
         val endedLatch = CountDownLatch(1)
 
         val player = DesktopFfmpegPlayer(
@@ -255,6 +256,9 @@ class DesktopPlatformAndPlayerTest {
             onPlaybackError = { err ->
                 playbackErrorRef.set(err)
                 endedLatch.countDown()
+            },
+            onVideoDimensionsKnown = { w, h ->
+                reportedDimsRef.set(Pair(w, h))
             }
         )
 
@@ -278,6 +282,7 @@ class DesktopPlatformAndPlayerTest {
             assertNotNull(bmp)
             assertEquals(320, bmp.width)
             assertEquals(180, bmp.height)
+            assertEquals(Pair(320, 180), reportedDimsRef.get())
         } finally {
             player.release()
             proxy.stop()
