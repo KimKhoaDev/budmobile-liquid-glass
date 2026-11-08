@@ -8,6 +8,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -22,6 +23,7 @@ import com.phimbud.mobile.core.platform.PlatformContext
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import java.awt.Color
 import java.awt.Dimension
+import javax.imageio.ImageIO
 
 fun main() = application {
     val repository = remember {
@@ -41,10 +43,14 @@ fun main() = application {
         DesktopKeyDispatcher()
     }
 
+    @Suppress("DEPRECATION")
+    val appIcon = runCatching { painterResource("icon.png") }.getOrNull()
+
     Window(
         onCloseRequest = ::exitApplication,
         state = windowState,
         title = "PhimBud",
+        icon = appIcon,
         resizable = true,
         onPreviewKeyEvent = { event ->
             if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
@@ -59,6 +65,18 @@ fun main() = application {
             window.contentPane?.background = Color(0x14, 0x14, 0x14)
             window.minimumSize = Dimension(360, 640)
             windowController.awtWindow = window
+
+            runCatching {
+                val iconStream = Thread.currentThread().contextClassLoader.getResourceAsStream("icon.png")
+                    ?: javaClass.getResourceAsStream("/icon.png")
+                if (iconStream != null) {
+                    val awtImage = ImageIO.read(iconStream)
+                    if (awtImage != null) {
+                        window.iconImages = listOf(awtImage)
+                    }
+                }
+            }
+
             onDispose {
                 if (windowController.awtWindow === window) {
                     windowController.awtWindow = null

@@ -18,6 +18,7 @@ import com.phimbud.mobile.player.HlsManifestRewriter
 import com.phimbud.mobile.player.SmartSubtitleCalculator
 import com.phimbud.mobile.player.SubtitleBgStyle
 import com.phimbud.mobile.player.SubtitleColorPreset
+import com.phimbud.mobile.player.PlayerPreferencesStore
 import com.phimbud.mobile.player.SubtitlePreferences
 import com.phimbud.mobile.player.SubtitlePreferencesStore
 import com.phimbud.mobile.player.VideoResizeMode
@@ -399,6 +400,40 @@ class DesktopPlatformAndPlayerTest {
             SmartSubtitleCalculator.computeBackdropAlpha(SubtitleBgStyle.SMART_ADAPTIVE, brightLum) >
                 SmartSubtitleCalculator.computeBackdropAlpha(SubtitleBgStyle.SMART_ADAPTIVE, darkLum) + 0.30f
         )
+    }
+
+    @Test
+    fun playerPreferencesStorePersistsServerAndSubtitlePreferencesCleanly() {
+        val tempRoot = Files.createTempDirectory("phimbud_player_prefs_test").toFile()
+        try {
+            val context = PlatformContext(tempRoot)
+            val store = PlayerPreferencesStore(context)
+
+            // Defaults verification
+            assertEquals("1", store.preferredServer)
+            assertTrue(store.isSubtitleEnabled)
+            assertEquals("vi", store.preferredSubtitleLanguage)
+
+            // Update preferences
+            store.preferredServer = "2"
+            store.isSubtitleEnabled = false
+            store.preferredSubtitleLanguage = "en"
+
+            // Verify persistence in a fresh store instance pointing to same storage
+            val reloadedStore = PlayerPreferencesStore(PlatformContext(tempRoot))
+            assertEquals("2", reloadedStore.preferredServer)
+            assertTrue(!reloadedStore.isSubtitleEnabled)
+            assertEquals("en", reloadedStore.preferredSubtitleLanguage)
+
+            // Toggle back
+            reloadedStore.isSubtitleEnabled = true
+            reloadedStore.preferredServer = "3"
+            val thirdStore = PlayerPreferencesStore(PlatformContext(tempRoot))
+            assertEquals("3", thirdStore.preferredServer)
+            assertTrue(thirdStore.isSubtitleEnabled)
+        } finally {
+            tempRoot.deleteRecursively()
+        }
     }
 
     @Test

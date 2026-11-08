@@ -10,6 +10,7 @@ import com.phimbud.mobile.core.model.WatchInfo
 import com.phimbud.mobile.core.platform.CachedSubtitle
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import com.phimbud.mobile.player.IntroRecapDetector
+import com.phimbud.mobile.player.PlayerPreferencesStore
 import com.phimbud.mobile.player.SkipSegment
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +54,8 @@ class PlayerViewModel(
     private var loadJob: Job? = null
     private var episodesJob: Job? = null
     private var syncJob: Job? = null
-    var currentServer: String = "1"
+    val playerPrefsStore = PlayerPreferencesStore(repository.platformContext)
+    var currentServer: String = playerPrefsStore.preferredServer
 
     init {
         loadStream(watchFid, currentServer)
@@ -73,14 +75,21 @@ class PlayerViewModel(
                 val streamDeferred = async { repository.getVideoSrc(fid, server) }
                 val subBundleDeferred = async {
                     val rawSubs = repository.getSubtitles(fid).getOrDefault(emptyList())
+                    val prefLang = playerPrefsStore.preferredSubtitleLanguage
                     val subs = rawSubs.sortedWith(
-                        compareByDescending<Subtitle> { it.language.startsWith("vi", ignoreCase = true) }
+                        compareByDescending<Subtitle> { it.language.equals(prefLang, ignoreCase = true) || it.language.startsWith(prefLang, ignoreCase = true) }
+                            .thenByDescending { it.language.startsWith("vi", ignoreCase = true) }
                             .thenByDescending { it.isDefault }
                             .thenBy { it.label }
                     )
-                    val defaultSub = subs.firstOrNull { it.language.startsWith("vi", ignoreCase = true) }
-                        ?: subs.firstOrNull { it.isDefault }
-                        ?: subs.firstOrNull()
+                    val defaultSub = if (!playerPrefsStore.isSubtitleEnabled) {
+                        null
+                    } else {
+                        subs.firstOrNull { it.language.equals(prefLang, ignoreCase = true) || it.language.startsWith(prefLang, ignoreCase = true) }
+                            ?: subs.firstOrNull { it.language.startsWith("vi", ignoreCase = true) }
+                            ?: subs.firstOrNull { it.isDefault }
+                            ?: subs.firstOrNull()
+                    }
                     val subData = if (defaultSub != null) {
                         repository.downloadSubtitle(defaultSub, fid).getOrNull()
                     } else {
@@ -242,6 +251,7 @@ class PlayerViewModel(
     }
 
     fun switchServer(server: String) {
+        playerPrefsStore.preferredServer = server
         if (server == currentServer && _uiState.value is PlayerUiState.Ready) return
         loadStream(watchFid, server)
     }
@@ -249,8 +259,14 @@ class PlayerViewModel(
     fun selectSubtitle(subtitle: Subtitle?) {
         val current = _uiState.value as? PlayerUiState.Ready ?: return
         if (subtitle == null) {
+            playerPrefsStore.isSubtitleEnabled = false
             _uiState.value = current.copy(activeSubtitle = null, activeSubtitleData = null)
             return
+        }
+
+        playerPrefsStore.isSubtitleEnabled = true
+        if (subtitle.language.isNotBlank()) {
+            playerPrefsStore.preferredSubtitleLanguage = subtitle.language
         }
 
         val targetFid = watchFid

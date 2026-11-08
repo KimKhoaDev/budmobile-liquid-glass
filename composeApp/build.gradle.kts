@@ -184,10 +184,10 @@ compose.desktop {
         )
 
         nativeDistributions {
-            outputBaseDir.set(project.layout.buildDirectory.dir("release-windows"))
+            outputBaseDir.set(project.layout.buildDirectory.dir("release-windows-v1.1.4"))
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
             packageName = "PhimBud"
-            packageVersion = "1.1.2"
+            packageVersion = "1.1.4"
             description = "PhimBud Windows App"
             vendor = "PhimBud"
             modules(
@@ -206,6 +206,7 @@ compose.desktop {
                 shortcut = true
                 dirChooser = true
                 upgradeUuid = "d306cf30-a001-3822-8129-e8d6c5539794"
+                iconFile.set(project.file("src/desktopMain/resources/icon.ico"))
             }
         }
     }
