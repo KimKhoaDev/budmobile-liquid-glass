@@ -23,23 +23,18 @@ Dự án là client đa nền tảng (Kotlin Multiplatform) đóng gói lại d�
 
 ---
 
-## 2. Quy trình Hoàn thành Task: Build Release Android trên Máy Local
+## 2. Quy trình Hoàn thành Task & Kiểm tra Mã nguồn
 
 Sau mỗi lần thực hiện tính năng mới hoặc sửa lỗi, trước khi bàn giao cho người dùng:
 
 1. **Kiểm tra Kiểm thử & Biên dịch Đa nền tảng**:
-   - Chạy lệnh kiểm tra unit test và khả năng biên dịch chéo cho cả Android và iOS:
+   - Chạy lệnh kiểm tra unit test và khả năng biên dịch chéo cho cả Android và iOS khi cần thiết để bảo đảm mã nguồn không lỗi:
      ```powershell
      .\gradlew.bat :composeApp:testDebugUnitTest :composeApp:compileKotlinIosArm64
      ```
-2. **Đóng gói Bản Release APK Local**:
-   - Luôn luôn chạy lệnh đóng gói Release APK Android trực tiếp trên máy cục bộ này:
-     ```powershell
-     .\gradlew.bat :composeApp:assembleRelease
-     ```
-   - Kiểm tra tệp APK được tạo ra tại:
-     `composeApp/build/outputs/apk/release/composeApp-release.apk`
-   - Báo cáo rõ ràng đường dẫn tệp kèm dung lượng (MB) sau khi đã tối ưu bằng R8 / Shrink Resources cho người dùng.
+2. **Không Tự Động Build Release APK**:
+   - Không cần tự động chạy lệnh đóng gói Release APK (`assembleRelease`) trên máy local sau mỗi task.
+   - Chỉ thực hiện build APK hoặc export gói cài đặt khi người dùng có yêu cầu cụ thể.
 
 ---
 
