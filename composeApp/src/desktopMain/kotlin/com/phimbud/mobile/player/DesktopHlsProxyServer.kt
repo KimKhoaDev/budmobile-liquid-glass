@@ -24,6 +24,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.writeFully
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,6 +70,7 @@ class DesktopHlsProxyServer(
     private val vodPlaylistCache = ConcurrentHashMap<String, String>()
     private val keyBytesCache = ConcurrentHashMap<String, ByteArray>()
     private val segmentLookaheadMap = ConcurrentHashMap<String, List<String>>()
+    private val inFlightPrefetches = ConcurrentHashMap<String, CompletableDeferred<CachedSegment?>>()
 
     private val segmentCacheLock = Any()
     private val segmentLruCache = java.util.LinkedHashMap<String, CachedSegment>(32, 0.75f, true)
@@ -78,6 +80,8 @@ class DesktopHlsProxyServer(
     private val prefetchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile
     private var prefetchJob: Job? = null
+    @Volatile
+    private var demandedPrefetchUrl: String? = null
 
     private fun getCachedSegment(url: String): CachedSegment? = synchronized(segmentCacheLock) {
         segmentLruCache[url]
@@ -106,7 +110,7 @@ class DesktopHlsProxyServer(
         }
     }
 
-    private fun indexPlaylistSegments(playlistUrl: String, rawContent: String) {
+    private fun indexPlaylistSegments(playlistUrl: String, rawContent: String): String? {
         val lines = rawContent.replace("\r\n", "\n").replace('\r', '\n').split('\n')
         val orderedSegments = ArrayList<String>()
         for (line in lines) {
@@ -118,16 +122,19 @@ class DesktopHlsProxyServer(
                 orderedSegments.add(HlsManifestRewriter.decodeObfuscatedAssetUrl(resolved))
             }
         }
-        if (orderedSegments.size < 2) return
-        if (segmentLookaheadMap.size > 4000) {
-            segmentLookaheadMap.clear()
-        }
-        for (i in orderedSegments.indices) {
-            val nextEnd = minOf(orderedSegments.size, i + 1 + LOOKAHEAD_PREFETCH_COUNT)
-            if (i + 1 < nextEnd) {
-                segmentLookaheadMap[orderedSegments[i]] = orderedSegments.subList(i + 1, nextEnd).toList()
+        if (orderedSegments.isEmpty()) return null
+        if (orderedSegments.size >= 2) {
+            if (segmentLookaheadMap.size > 4000) {
+                segmentLookaheadMap.clear()
+            }
+            for (i in orderedSegments.indices) {
+                val nextEnd = minOf(orderedSegments.size, i + 1 + LOOKAHEAD_PREFETCH_COUNT)
+                if (i + 1 < nextEnd) {
+                    segmentLookaheadMap[orderedSegments[i]] = orderedSegments.subList(i + 1, nextEnd).toList()
+                }
             }
         }
+        return orderedSegments.firstOrNull()
     }
 
     private fun resolveMediaContentType(segmentUrl: String, upstreamContentType: String?): ContentType {
@@ -146,47 +153,76 @@ class DesktopHlsProxyServer(
 
     private fun scheduleIdlePrefetch(currentSegmentUrl: String) {
         val nextUrls = segmentLookaheadMap[currentSegmentUrl] ?: return
-        if (nextUrls.all { getCachedSegment(it) != null }) return
+        schedulePrefetchTargets(nextUrls, initialDelayMs = 120L)
+    }
+
+    private fun schedulePrefetchTargets(targetUrls: List<String>, initialDelayMs: Long) {
+        if (targetUrls.isEmpty() || targetUrls.all { getCachedSegment(it) != null }) return
+        // Never interrupt an in-flight prefetch that is actively demanded by a waiting FFmpeg request
+        if (demandedPrefetchUrl != null) return
 
         prefetchJob?.cancel()
         prefetchJob = prefetchScope.launch {
-            // Brief settle delay so active FFmpeg demuxing always has 100% network priority
-            delay(180L)
-            for (nextUrl in nextUrls) {
-                if (!isActive || activeUpstreamStreams.get() > 0) break
+            if (initialDelayMs > 0L) {
+                delay(initialDelayMs)
+            }
+            for (nextUrl in targetUrls) {
+                if (!isActive) break
+                if (activeUpstreamStreams.get() > 0 && demandedPrefetchUrl != nextUrl) break
                 if (getCachedSegment(nextUrl) != null) continue
 
-                runCatching {
-                    httpClient.prepareGet(nextUrl) {
-                        header("Referer", "https://phimbud.com/")
-                    }.execute { upstream ->
-                        if (!upstream.status.isSuccess()) return@execute
-                        val mediaContentType = resolveMediaContentType(
-                            segmentUrl = nextUrl,
-                            upstreamContentType = upstream.headers[HttpHeaders.ContentType]
-                        )
-                        val channel = upstream.bodyAsChannel()
-                        val baos = ByteArrayOutputStream(256 * 1024)
-                        val buf = ByteArray(16 * 1024)
-                        var aborted = false
-                        while (isActive && activeUpstreamStreams.get() == 0) {
-                            val read = channel.readAvailable(buf, 0, buf.size)
-                            if (read < 0) break
-                            if (read > 0) {
-                                if (baos.size() + read <= MAX_SINGLE_SEGMENT_BYTES) {
-                                    baos.write(buf, 0, read)
-                                } else {
-                                    aborted = true
-                                    break
+                val deferred = CompletableDeferred<CachedSegment?>()
+                if (inFlightPrefetches.putIfAbsent(nextUrl, deferred) != null) continue
+
+                try {
+                    var completedSegment: CachedSegment? = null
+                    runCatching {
+                        httpClient.prepareGet(nextUrl) {
+                            header("Referer", "https://phimbud.com/")
+                        }.execute { upstream ->
+                            if (!upstream.status.isSuccess()) return@execute
+                            val mediaContentType = resolveMediaContentType(
+                                segmentUrl = nextUrl,
+                                upstreamContentType = upstream.headers[HttpHeaders.ContentType]
+                            )
+                            val channel = upstream.bodyAsChannel()
+                            val baos = ByteArrayOutputStream(256 * 1024)
+                            val buf = ByteArray(64 * 1024)
+                            var aborted = false
+                            while (isActive && (activeUpstreamStreams.get() == 0 || demandedPrefetchUrl == nextUrl)) {
+                                val read = channel.readAvailable(buf, 0, buf.size)
+                                if (read < 0) break
+                                if (read > 0) {
+                                    if (baos.size() + read <= MAX_SINGLE_SEGMENT_BYTES) {
+                                        baos.write(buf, 0, read)
+                                    } else {
+                                        aborted = true
+                                        break
+                                    }
+                                }
+                            }
+                            if (!aborted &&
+                                isActive &&
+                                (activeUpstreamStreams.get() == 0 || demandedPrefetchUrl == nextUrl) &&
+                                channel.isClosedForRead
+                            ) {
+                                val bytes = baos.toByteArray()
+                                if (bytes.isNotEmpty()) {
+                                    val seg = CachedSegment(bytes, mediaContentType)
+                                    putCachedSegment(nextUrl, seg)
+                                    completedSegment = seg
                                 }
                             }
                         }
-                        if (!aborted && isActive && activeUpstreamStreams.get() == 0 && channel.isClosedForRead) {
-                            val bytes = baos.toByteArray()
-                            if (bytes.isNotEmpty()) {
-                                putCachedSegment(nextUrl, CachedSegment(bytes, mediaContentType))
-                            }
-                        }
+                    }
+                    deferred.complete(completedSegment)
+                } finally {
+                    inFlightPrefetches.remove(nextUrl, deferred)
+                    if (demandedPrefetchUrl == nextUrl) {
+                        demandedPrefetchUrl = null
+                    }
+                    if (!deferred.isCompleted) {
+                        deferred.complete(null)
                     }
                 }
             }
@@ -225,7 +261,10 @@ class DesktopHlsProxyServer(
                             return@runCatching
                         }
                         val rawBody = res.bodyAsText()
-                        indexPlaylistSegments(upstreamUrl, rawBody)
+                        val firstSegment = indexPlaylistSegments(upstreamUrl, rawBody)
+                        if (firstSegment != null) {
+                            schedulePrefetchTargets(listOf(firstSegment), initialDelayMs = 20L)
+                        }
                         val proxyBase = baseUrl ?: "http://127.0.0.1:${call.request.local.serverPort}"
                         val rewritten = HlsManifestRewriter.rewritePlaylist(
                             playlistUrl = upstreamUrl,
@@ -312,8 +351,26 @@ class DesktopHlsProxyServer(
                                 )
                                 return@runCatching
                             }
+
+                            // Coalesce with an already in-flight prefetch for this exact segment
+                            // instead of cancelling and re-downloading from 0%!
+                            val inFlight = inFlightPrefetches[segmentUrl]
+                            if (inFlight != null) {
+                                demandedPrefetchUrl = segmentUrl
+                                val coalesced = runCatching { inFlight.await() }.getOrNull()
+                                if (coalesced != null) {
+                                    scheduleIdlePrefetch(segmentUrl)
+                                    call.respondBytes(
+                                        bytes = coalesced.bytes,
+                                        contentType = coalesced.contentType,
+                                        status = HttpStatusCode.OK
+                                    )
+                                    return@runCatching
+                                }
+                            }
                         }
 
+                        demandedPrefetchUrl = null
                         prefetchJob?.cancel()
                         activeUpstreamStreams.incrementAndGet()
                         try {
@@ -347,13 +404,20 @@ class DesktopHlsProxyServer(
                                         null
                                     }
                                     var teeOverflow = false
-                                    val chunk = ByteArray(16 * 1024)
+                                    val chunk = ByteArray(64 * 1024)
+                                    var isFirstChunk = true
+                                    var unflushedBytes = 0
                                     while (true) {
                                         val read = channel.readAvailable(chunk, 0, chunk.size)
                                         if (read < 0) break
                                         if (read > 0) {
                                             writeFully(chunk, 0, read)
-                                            flush()
+                                            unflushedBytes += read
+                                            if (isFirstChunk || unflushedBytes >= 64 * 1024) {
+                                                flush()
+                                                isFirstChunk = false
+                                                unflushedBytes = 0
+                                            }
                                             if (teeBuffer != null && !teeOverflow) {
                                                 if (teeBuffer.size() + read <= MAX_SINGLE_SEGMENT_BYTES) {
                                                     teeBuffer.write(chunk, 0, read)
@@ -362,6 +426,9 @@ class DesktopHlsProxyServer(
                                                 }
                                             }
                                         }
+                                    }
+                                    if (unflushedBytes > 0) {
+                                        flush()
                                     }
                                     if (teeBuffer != null && !teeOverflow && channel.isClosedForRead) {
                                         val fullBytes = teeBuffer.toByteArray()
@@ -394,7 +461,10 @@ class DesktopHlsProxyServer(
     }
 
     fun clearSessionCache() {
+        demandedPrefetchUrl = null
         prefetchJob?.cancel()
+        inFlightPrefetches.values.forEach { it.cancel() }
+        inFlightPrefetches.clear()
         vodPlaylistCache.clear()
         keyBytesCache.clear()
         segmentLookaheadMap.clear()

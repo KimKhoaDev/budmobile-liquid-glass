@@ -2,7 +2,7 @@ package com.phimbud.mobile.player
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -34,12 +34,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
@@ -48,6 +51,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phimbud.mobile.LocalDesktopWindowController
@@ -88,6 +93,9 @@ internal class DesktopPlayerController(
     var currentFrame by mutableStateOf<ImageBitmap?>(null)
         private set
 
+    var frameTick by mutableIntStateOf(0)
+        private set
+
     var livePositionMs by mutableLongStateOf(0L)
         private set
 
@@ -108,6 +116,7 @@ internal class DesktopPlayerController(
     private val ffmpegPlayer = DesktopFfmpegPlayer(
         onFrameRendered = { bitmap ->
             currentFrame = bitmap
+            frameTick++
         },
         onStateChanged = { playing, buffering ->
             isPlaying = playing
@@ -414,14 +423,33 @@ private fun DesktopVideoFrame(
     scale: ContentScale,
     modifier: Modifier = Modifier
 ) {
-    val frame = desktopController.currentFrame
-    if (frame != null) {
-        Image(
-            bitmap = frame,
-            contentDescription = "Video",
-            contentScale = scale,
-            modifier = modifier
-        )
+    // Read frameTick and currentFrame strictly inside Canvas's DrawScope so Compose skips
+    // 100% of Composition and Layout phases on every video frame (only GPU Draw phase runs).
+    Canvas(modifier = modifier) {
+        val tick = desktopController.frameTick
+        val frame = desktopController.currentFrame
+        if (tick >= 0 && frame != null) {
+            val srcW = frame.width
+            val srcH = frame.height
+            val canvasW = size.width
+            val canvasH = size.height
+            if (srcW > 0 && srcH > 0 && canvasW > 0f && canvasH > 0f) {
+                val srcSize = Size(srcW.toFloat(), srcH.toFloat())
+                val factor = scale.computeScaleFactor(srcSize, size)
+                val dstW = (srcSize.width * factor.scaleX).roundToInt().coerceAtLeast(1)
+                val dstH = (srcSize.height * factor.scaleY).roundToInt().coerceAtLeast(1)
+                val dstX = ((canvasW - dstW) * 0.5f).roundToInt()
+                val dstY = ((canvasH - dstH) * 0.5f).roundToInt()
+                clipRect {
+                    drawImage(
+                        image = frame,
+                        dstOffset = IntOffset(dstX, dstY),
+                        dstSize = IntSize(dstW, dstH),
+                        filterQuality = FilterQuality.Low
+                    )
+                }
+            }
+        }
     }
 }
 

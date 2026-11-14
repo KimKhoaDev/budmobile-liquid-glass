@@ -39,6 +39,9 @@ class IosHlsProxyServer(
     private val httpClient: HttpClient
 ) {
     private val mutex = Mutex()
+    private val cacheMutex = Mutex()
+    private val vodPlaylistCache = HashMap<String, String>()
+    private val keyBytesCache = HashMap<String, ByteArray>()
     private var server: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
     private var baseUrl: String? = null
 
@@ -55,6 +58,17 @@ class IosHlsProxyServer(
                     }
                     runCatching {
                         val upstreamUrl = HlsManifestRewriter.decodeProxyTarget(encoded)
+                        val cachedRewritten = cacheMutex.withLock { vodPlaylistCache[upstreamUrl] }
+                        if (cachedRewritten != null) {
+                            call.response.header(HttpHeaders.CacheControl, "no-cache")
+                            call.respondText(
+                                text = cachedRewritten,
+                                contentType = ContentType("application", "vnd.apple.mpegurl"),
+                                status = HttpStatusCode.OK
+                            )
+                            return@runCatching
+                        }
+
                         val res = httpClient.get(upstreamUrl) {
                             header("Referer", "https://phimbud.com/")
                         }
@@ -62,12 +76,21 @@ class IosHlsProxyServer(
                             call.respondText("Upstream HTTP ${res.status.value}", status = res.status)
                             return@runCatching
                         }
+                        val rawBody = res.bodyAsText()
                         val proxyBase = baseUrl ?: "http://127.0.0.1:${call.request.local.serverPort}"
                         val rewritten = HlsManifestRewriter.rewritePlaylist(
                             playlistUrl = upstreamUrl,
-                            playlistContent = res.bodyAsText(),
+                            playlistContent = rawBody,
                             proxyBaseUrl = proxyBase
                         )
+                        if (rawBody.contains("#EXT-X-ENDLIST") || rawBody.contains("#EXT-X-STREAM-INF")) {
+                            cacheMutex.withLock {
+                                if (vodPlaylistCache.size > 32) {
+                                    vodPlaylistCache.clear()
+                                }
+                                vodPlaylistCache[upstreamUrl] = rewritten
+                            }
+                        }
                         call.response.header(HttpHeaders.CacheControl, "no-cache")
                         call.respondText(
                             text = rewritten,
@@ -88,10 +111,28 @@ class IosHlsProxyServer(
                     }
                     runCatching {
                         val keyUrl = HlsManifestRewriter.decodeProxyTarget(encoded)
+                        val cachedKey = cacheMutex.withLock { keyBytesCache[keyUrl] }
+                        if (cachedKey != null) {
+                            call.respondBytes(
+                                bytes = cachedKey,
+                                contentType = ContentType.Application.OctetStream,
+                                status = HttpStatusCode.OK
+                            )
+                            return@runCatching
+                        }
+
                         val res = httpClient.get(keyUrl) {
                             header("Referer", "https://phimbud.com/")
                         }
                         val bytes = res.bodyAsBytes()
+                        if (res.status.isSuccess() && bytes.isNotEmpty()) {
+                            cacheMutex.withLock {
+                                if (keyBytesCache.size > 64) {
+                                    keyBytesCache.clear()
+                                }
+                                keyBytesCache[keyUrl] = bytes
+                            }
+                        }
                         call.respondBytes(
                             bytes = bytes,
                             contentType = ContentType.Application.OctetStream,

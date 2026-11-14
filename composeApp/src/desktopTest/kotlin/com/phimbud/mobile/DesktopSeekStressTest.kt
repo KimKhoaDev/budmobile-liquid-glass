@@ -269,4 +269,38 @@ class DesktopSeekStressTest {
 
     @Test
     fun slowNetworkSeekStormHasNoFlashBack() = runScenario(slow = true, storm = true)
+
+    @Test
+    fun pausedSeekRendersTargetFrameImmediately() {
+        val h = createHarness(slow = false)
+        try {
+            h.player.openStream(h.playlistUrl, 0L, true)
+            assertTrue(waitForFrames(h, 5, 15_000), "Expected initial frames before pause")
+            h.player.pause()
+            Thread.sleep(150)
+
+            val beforeCount = h.events.size
+            val seekTargetMs = 12_000L
+            doSeek(h, seekTargetMs)
+
+            val deadline = System.currentTimeMillis() + 6_000L
+            var pausedFramePtsMs = -1L
+            while (System.currentTimeMillis() < deadline) {
+                val newFrames = h.events.drop(beforeCount).filterIsInstance<Event.Frame>()
+                if (newFrames.isNotEmpty()) {
+                    pausedFramePtsMs = newFrames.last().ptsUs / 1000L
+                    break
+                }
+                Thread.sleep(25)
+            }
+
+            assertNull(h.error.get(), "Unexpected error during paused seek: ${h.error.get()}")
+            assertTrue(
+                pausedFramePtsMs >= seekTargetMs - 70L,
+                "Expected paused seek to render frame >= ${seekTargetMs - 70L}ms immediately while paused, got ${pausedFramePtsMs}ms"
+            )
+        } finally {
+            h.close()
+        }
+    }
 }

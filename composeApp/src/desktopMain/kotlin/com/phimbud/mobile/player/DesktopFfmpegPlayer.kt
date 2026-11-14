@@ -138,13 +138,33 @@ internal class DesktopFfmpegPlayer(
     @Volatile
     private var activeSession: PlaybackSession? = null
 
-    // Triple Buffering for Skia Direct3D GPU presentation (prevents tearing / GPU-CPU stalls)
-    private var bitmapA: Bitmap? = null
-    private var bitmapB: Bitmap? = null
-    private var bitmapC: Bitmap? = null
+    // 4-Slot Ring Buffer for off-EDT pixel installation & tear-free Skia Direct3D GPU presentation.
+    // With 4 slots and at most 3 held by {currentEdtSlot, previousEdtSlot, pendingFrameRef},
+    // the video presenter thread is guaranteed a lock-free idle slot without blocking the Swing EDT.
+    private class BitmapSlot(
+        val width: Int,
+        val height: Int,
+        val info: ImageInfo
+    ) {
+        val bitmap: Bitmap = Bitmap().apply { allocPixels(info) }
+        val composeBitmap: ImageBitmap = bitmap.asComposeImageBitmap()
+
+        fun close() {
+            runCatching { bitmap.close() }
+        }
+    }
+
+    private val slotPoolLock = Any()
+    private var bitmapSlots: Array<BitmapSlot>? = null
     private var bitmapWidth: Int = 0
     private var bitmapHeight: Int = 0
     private var bitmapRingIndex: Int = 0
+
+    @Volatile
+    private var currentEdtSlot: BitmapSlot? = null
+
+    @Volatile
+    private var previousEdtSlot: BitmapSlot? = null
 
     /**
      * Overrides the 4-argument `grabFrame(doAudio, doVideo, processImage, keyFrames)` invoked internally
@@ -176,25 +196,14 @@ internal class DesktopFfmpegPlayer(
         }
     }
 
-    private class PendingFrame(
+    private class PendingReadyFrame(
         val session: PlaybackSession,
-        val width: Int,
-        val height: Int,
-        val bgraBytes: ByteArray,
+        val slot: BitmapSlot,
         val ptsUs: Long,
-        val generation: Int,
-        private val recycleBuffer: (ByteArray) -> Unit
-    ) {
-        private val recycled = AtomicBoolean(false)
+        val generation: Int
+    )
 
-        fun recycleOnce() {
-            if (recycled.compareAndSet(false, true)) {
-                recycleBuffer(bgraBytes)
-            }
-        }
-    }
-
-    private val pendingFrameRef = AtomicReference<PendingFrame?>(null)
+    private val pendingFrameRef = AtomicReference<PendingReadyFrame?>(null)
     private val isFrameScheduledOnEdt = AtomicBoolean(false)
 
     fun openStream(
@@ -204,8 +213,7 @@ internal class DesktopFfmpegPlayer(
     ) {
         val previous = activeSession
         activeSession = null
-        val dropped = pendingFrameRef.getAndSet(null)
-        dropped?.recycleOnce()
+        pendingFrameRef.set(null)
         previous?.stopAsync()
 
         val session = PlaybackSession(
@@ -226,27 +234,27 @@ internal class DesktopFfmpegPlayer(
     }
 
     fun seekTo(positionMs: Long) {
-        val dropped = pendingFrameRef.getAndSet(null)
-        dropped?.recycleOnce()
+        pendingFrameRef.set(null)
         activeSession?.requestSeek(positionMs.coerceAtLeast(0L))
     }
 
     fun release() {
         val previous = activeSession
         activeSession = null
-        val dropped = pendingFrameRef.getAndSet(null)
-        dropped?.recycleOnce()
+        pendingFrameRef.set(null)
         previous?.stopAsync()
         SwingUtilities.invokeLater {
-            runCatching { bitmapA?.close() }
-            runCatching { bitmapB?.close() }
-            runCatching { bitmapC?.close() }
-            bitmapA = null
-            bitmapB = null
-            bitmapC = null
-            bitmapWidth = 0
-            bitmapHeight = 0
-            bitmapRingIndex = 0
+            val slotsToClose = synchronized(slotPoolLock) {
+                val old = bitmapSlots
+                bitmapSlots = null
+                bitmapWidth = 0
+                bitmapHeight = 0
+                bitmapRingIndex = 0
+                currentEdtSlot = null
+                previousEdtSlot = null
+                old
+            }
+            slotsToClose?.forEach { it.close() }
         }
     }
 
@@ -259,52 +267,69 @@ internal class DesktopFfmpegPlayer(
         generation: Int,
         recycleBuffer: (ByteArray) -> Unit
     ) {
-        if (activeSession !== session || width <= 0 || height <= 0) {
+        var targetSlot: BitmapSlot? = null
+        var obsoleteSlotsToClose: Array<BitmapSlot>? = null
+        try {
+            if (activeSession !== session || width <= 0 || height <= 0 || generation != session.currentGeneration()) {
+                return
+            }
+            synchronized(slotPoolLock) {
+                if (activeSession !== session || generation != session.currentGeneration()) {
+                    return
+                }
+                var slots = bitmapSlots
+                if (slots == null || bitmapWidth != width || bitmapHeight != height) {
+                    obsoleteSlotsToClose = slots
+                    val info = ImageInfo(width, height, ColorType.BGRA_8888, ColorAlphaType.OPAQUE)
+                    slots = Array(4) { BitmapSlot(width, height, info) }
+                    bitmapSlots = slots
+                    bitmapWidth = width
+                    bitmapHeight = height
+                    bitmapRingIndex = 0
+                }
+                val curEdt = currentEdtSlot
+                val prevEdt = previousEdtSlot
+                val pendSlot = pendingFrameRef.get()?.slot
+                var selected: BitmapSlot? = null
+                for (i in 0 until 4) {
+                    val idx = (bitmapRingIndex + i) and 3
+                    val candidate = slots[idx]
+                    if (candidate !== curEdt && candidate !== prevEdt && candidate !== pendSlot) {
+                        selected = candidate
+                        bitmapRingIndex = (idx + 1) and 3
+                        break
+                    }
+                }
+                val chosen = selected ?: slots[0]
+                chosen.bitmap.installPixels(chosen.info, bgraBytes, width * 4)
+                chosen.bitmap.notifyPixelsChanged()
+                targetSlot = chosen
+            }
+        } finally {
             recycleBuffer(bgraBytes)
-            return
+            obsoleteSlotsToClose?.let { oldSlots ->
+                SwingUtilities.invokeLater {
+                    oldSlots.forEach { it.close() }
+                }
+            }
         }
 
-        val newPending = PendingFrame(session, width, height, bgraBytes, ptsUs, generation, recycleBuffer)
-        val oldPending = pendingFrameRef.getAndSet(newPending)
-        // Drop stale frame immediately to prevent EDT frame bunching / queuing
-        oldPending?.recycleOnce()
+        val readySlot = targetSlot ?: return
+        pendingFrameRef.set(PendingReadyFrame(session, readySlot, ptsUs, generation))
 
         if (isFrameScheduledOnEdt.compareAndSet(false, true)) {
             SwingUtilities.invokeLater {
                 isFrameScheduledOnEdt.set(false)
                 val frameToRender = pendingFrameRef.getAndSet(null) ?: return@invokeLater
-                try {
-                    if (activeSession !== frameToRender.session ||
-                        frameToRender.generation != frameToRender.session.currentGeneration()
-                    ) {
-                        return@invokeLater
-                    }
-                    val w = frameToRender.width
-                    val h = frameToRender.height
-                    val info = ImageInfo(w, h, ColorType.BGRA_8888, ColorAlphaType.OPAQUE)
-                    if (bitmapWidth != w || bitmapHeight != h || bitmapA == null || bitmapB == null || bitmapC == null) {
-                        runCatching { bitmapA?.close() }
-                        runCatching { bitmapB?.close() }
-                        runCatching { bitmapC?.close() }
-                        bitmapA = Bitmap().apply { allocPixels(info) }
-                        bitmapB = Bitmap().apply { allocPixels(info) }
-                        bitmapC = Bitmap().apply { allocPixels(info) }
-                        bitmapWidth = w
-                        bitmapHeight = h
-                        bitmapRingIndex = 0
-                    }
-                    val target = when (bitmapRingIndex % 3) {
-                        0 -> bitmapA!!
-                        1 -> bitmapB!!
-                        else -> bitmapC!!
-                    }
-                    bitmapRingIndex = (bitmapRingIndex + 1) % 3
-                    target.installPixels(info, frameToRender.bgraBytes, w * 4)
-                    onFramePresented(frameToRender.ptsUs, false)
-                    onFrameRendered(target.asComposeImageBitmap())
-                } finally {
-                    frameToRender.recycleOnce()
+                if (activeSession !== frameToRender.session ||
+                    frameToRender.generation != frameToRender.session.currentGeneration()
+                ) {
+                    return@invokeLater
                 }
+                previousEdtSlot = currentEdtSlot
+                currentEdtSlot = frameToRender.slot
+                onFramePresented(frameToRender.ptsUs, false)
+                onFrameRendered(frameToRender.slot.composeBitmap)
             }
         }
     }
@@ -331,8 +356,17 @@ internal class DesktopFfmpegPlayer(
         val length: Int,
         val ptsUs: Long,
         val durationUs: Long,
-        val generation: Int
-    )
+        val generation: Int,
+        private val recycleBuffer: (ByteArray) -> Unit
+    ) {
+        private val recycled = AtomicBoolean(false)
+
+        fun recycleOnce() {
+            if (recycled.compareAndSet(false, true)) {
+                recycleBuffer(pcmBytes)
+            }
+        }
+    }
 
     private inner class PlaybackSession(
         private val url: String,
@@ -349,10 +383,16 @@ internal class DesktopFfmpegPlayer(
 
         private val audioClockUs = AtomicLong(initialResumeMs * 1000L)
         private val hasAudioStream = AtomicBoolean(false)
+        private val clockLock = Any()
+        private var lastObservedRawAudioUs: Long = -1L
+        private var lastObservedAudioWallNs: Long = 0L
+        private var lastReturnedMasterUs: Long = initialResumeMs.coerceAtLeast(0L) * 1000L
+        private var lastClockGen: Int = -1
 
         private val videoQueue = ArrayBlockingQueue<VideoPacket>(48)
         private val audioQueue = ArrayBlockingQueue<AudioPacket>(64)
         private val byteArrayPool = ArrayBlockingQueue<ByteArray>(56)
+        private val audioByteArrayPool = ArrayBlockingQueue<ByteArray>(72)
         private var reportedWidth = -1
         private var reportedHeight = -1
         private var lastNotifiedPositionMs = -1L
@@ -433,14 +473,17 @@ internal class DesktopFfmpegPlayer(
         }
 
         private fun clearQueuesAndRecycle() {
-            val oldPending = pendingFrameRef.getAndSet(null)
-            oldPending?.recycleOnce()
+            pendingFrameRef.set(null)
             val drainedVideo = ArrayList<VideoPacket>()
             videoQueue.drainTo(drainedVideo)
             for (vp in drainedVideo) {
                 vp.recycleOnce()
             }
-            audioQueue.clear()
+            val drainedAudio = ArrayList<AudioPacket>()
+            audioQueue.drainTo(drainedAudio)
+            for (ap in drainedAudio) {
+                ap.recycleOnce()
+            }
         }
 
         private fun borrowBytes(requiredSize: Int): ByteArray {
@@ -457,7 +500,22 @@ internal class DesktopFfmpegPlayer(
             }
         }
 
+        private fun borrowAudioBytes(requiredSize: Int): ByteArray {
+            val pooled = audioByteArrayPool.poll()
+            if (pooled != null && pooled.size >= requiredSize) {
+                return pooled
+            }
+            return ByteArray(maxOf(requiredSize, 8192))
+        }
+
+        private fun recycleAudioBytes(bytes: ByteArray) {
+            if (!stopped.get()) {
+                audioByteArrayPool.offer(bytes)
+            }
+        }
+
         private fun currentMasterClockUs(): Long {
+            val gen = seekGeneration.get()
             val floorUs = activeSeekFloorUs.get()
             val baseUs = audioClockUs.get()
             val line = soundLine
@@ -465,12 +523,37 @@ internal class DesktopFfmpegPlayer(
             if (hasAudioStream.get() && line != null && bps > 0L) {
                 val bufferedBytes = (line.bufferSize - line.available()).coerceAtLeast(0)
                 val bufferedUs = (bufferedBytes.toLong() * 1_000_000L) / bps
-                val pipelineCompensationUs = if (line.isRunning && bufferedBytes > 0) {
+                val isFlowing = line.isRunning && wantToPlay.get() && bufferedBytes > 0
+                val pipelineCompensationUs = if (isFlowing) {
                     WINDOWS_AUDIO_PIPELINE_LATENCY_US
                 } else {
                     0L
                 }
-                return (baseUs - bufferedUs - pipelineCompensationUs).coerceAtLeast(floorUs)
+                val rawAudioUs = (baseUs - bufferedUs - pipelineCompensationUs).coerceAtLeast(floorUs)
+                synchronized(clockLock) {
+                    val nowNs = System.nanoTime()
+                    if (gen != lastClockGen) {
+                        lastClockGen = gen
+                        lastObservedRawAudioUs = rawAudioUs
+                        lastObservedAudioWallNs = nowNs
+                        lastReturnedMasterUs = rawAudioUs
+                        return rawAudioUs
+                    }
+                    if (rawAudioUs != lastObservedRawAudioUs) {
+                        lastObservedRawAudioUs = rawAudioUs
+                        lastObservedAudioWallNs = nowNs
+                    }
+                    val interpUs = if (isFlowing) {
+                        ((nowNs - lastObservedAudioWallNs) / 1000L).coerceIn(0L, 25_000L)
+                    } else {
+                        0L
+                    }
+                    val candidateUs = (rawAudioUs + interpUs).coerceAtLeast(floorUs)
+                    if (candidateUs >= lastReturnedMasterUs || lastReturnedMasterUs - candidateUs > 25_000L) {
+                        lastReturnedMasterUs = candidateUs
+                    }
+                    return lastReturnedMasterUs
+                }
             }
             return baseUs.coerceAtLeast(floorUs)
         }
@@ -501,8 +584,9 @@ internal class DesktopFfmpegPlayer(
                 g.setOption("reconnect_delay_max", "5")
                 g.setOption("rw_timeout", "15000000")
                 g.setOption("fflags", "+genpts+discardcorrupt")
-                g.setOption("probesize", "1048576")
-                g.setOption("analyzeduration", "2000000")
+                g.setOption("probesize", "327680")
+                g.setOption("analyzeduration", "500000")
+                g.setOption("fpsprobesize", "5")
                 g.setOption("buffer_size", "2097152")
 
                 // Cap multi-core decoder threads to 2..6 so frame-threading pipeline delay stays short (~4-6 frames)
@@ -795,7 +879,7 @@ internal class DesktopFfmpegPlayer(
                                 }
                                 val ptsUs = maxOf(rawPtsUs, activeSeekFloorUs.get())
 
-                                val pcm = ByteArray(pcmLen)
+                                val pcm = borrowAudioBytes(pcmLen)
                                 var byteIdx = 0
                                 while (dup.hasRemaining()) {
                                     val s = dup.get().toInt()
@@ -803,10 +887,19 @@ internal class DesktopFfmpegPlayer(
                                     pcm[byteIdx++] = ((s shr 8) and 0xFF).toByte()
                                 }
 
-                                val ap = AudioPacket(pcm, pcmLen, ptsUs, packetDurUs, genBeforeGrab)
+                                val ap = AudioPacket(pcm, pcmLen, ptsUs, packetDurUs, genBeforeGrab, ::recycleAudioBytes)
+                                var audioOffered = false
                                 while (!stopped.get() && genBeforeGrab == seekGeneration.get()) {
                                     if (audioQueue.offer(ap, 40L, TimeUnit.MILLISECONDS)) {
+                                        audioOffered = true
                                         break
+                                    }
+                                }
+                                if (!audioOffered) {
+                                    ap.recycleOnce()
+                                } else if (stopped.get() || genBeforeGrab != seekGeneration.get()) {
+                                    if (audioQueue.remove(ap)) {
+                                        ap.recycleOnce()
                                     }
                                 }
                             }
@@ -834,36 +927,40 @@ internal class DesktopFfmpegPlayer(
                         continue
                     }
                     val packet = audioQueue.poll(30L, TimeUnit.MILLISECONDS) ?: continue
-                    if (packet.generation != seekGeneration.get()) {
-                        continue
-                    }
-                    val bps = audioBytesPerSecond.coerceAtLeast(1L)
-                    val line = soundLine
-                    if (line != null && line.isOpen) {
-                        var offset = 0
-                        while (offset < packet.length && !stopped.get() && packet.generation == seekGeneration.get()) {
-                            if (!wantToPlay.get()) {
-                                Thread.sleep(15L)
-                                continue
-                            }
-                            val chunk = minOf(4096, packet.length - offset)
-                            val written = line.write(packet.pcmBytes, offset, chunk)
-                            if (written <= 0) {
-                                Thread.sleep(5L)
-                            } else {
-                                offset += written
-                                if (packet.generation == seekGeneration.get()) {
-                                    val writtenUs = (offset.toLong() * 1_000_000L) / bps
-                                    val floorUs = activeSeekFloorUs.get()
-                                    audioClockUs.set(maxOf(packet.ptsUs + writtenUs, floorUs))
+                    try {
+                        if (packet.generation != seekGeneration.get()) {
+                            continue
+                        }
+                        val bps = audioBytesPerSecond.coerceAtLeast(1L)
+                        val line = soundLine
+                        if (line != null && line.isOpen) {
+                            var offset = 0
+                            while (offset < packet.length && !stopped.get() && packet.generation == seekGeneration.get()) {
+                                if (!wantToPlay.get()) {
+                                    Thread.sleep(15L)
+                                    continue
+                                }
+                                val chunk = minOf(4096, packet.length - offset)
+                                val written = line.write(packet.pcmBytes, offset, chunk)
+                                if (written <= 0) {
+                                    Thread.sleep(5L)
+                                } else {
+                                    offset += written
+                                    if (packet.generation == seekGeneration.get()) {
+                                        val writtenUs = (offset.toLong() * 1_000_000L) / bps
+                                        val floorUs = activeSeekFloorUs.get()
+                                        audioClockUs.set(maxOf(packet.ptsUs + writtenUs, floorUs))
+                                    }
                                 }
                             }
                         }
-                    }
-                    if (packet.generation == seekGeneration.get()) {
-                        val floorUs = activeSeekFloorUs.get()
-                        audioClockUs.set(maxOf(packet.ptsUs + packet.durationUs, floorUs))
-                        notifyPosition(currentMasterClockUs() / 1000L, force = false, generation = packet.generation)
+                        if (packet.generation == seekGeneration.get()) {
+                            val floorUs = activeSeekFloorUs.get()
+                            audioClockUs.set(maxOf(packet.ptsUs + packet.durationUs, floorUs))
+                            notifyPosition(currentMasterClockUs() / 1000L, force = false, generation = packet.generation)
+                        }
+                    } finally {
+                        packet.recycleOnce()
                     }
                 }
             } catch (_: InterruptedException) {
@@ -885,7 +982,10 @@ internal class DesktopFfmpegPlayer(
 
             try {
                 while (!stopped.get() && !Thread.currentThread().isInterrupted) {
-                    if (!wantToPlay.get()) {
+                    val activeGen = seekGeneration.get()
+                    val isPlayingNow = wantToPlay.get()
+                    val needsInitialFrameForGen = (firstVideoGen != activeGen) && (lastWallGen != activeGen)
+                    if (!isPlayingNow && !needsInitialFrameForGen) {
                         wallClockAnchorNs = 0L
                         firstVideoWallNs = 0L
                         Thread.sleep(20L)
@@ -907,13 +1007,18 @@ internal class DesktopFfmpegPlayer(
                         continue
                     }
 
-                    notifyState(playing = wantToPlay.get(), buffering = false)
+                    val playingAtFrame = wantToPlay.get()
+                    notifyState(playing = playingAtFrame, buffering = false)
 
                     if (hasAudioStream.get() && soundLine != null) {
                         if (firstVideoGen != vp.generation || firstVideoWallNs == 0L) {
                             firstVideoGen = vp.generation
-                            firstVideoWallNs = System.nanoTime()
+                            firstVideoWallNs = if (playingAtFrame) System.nanoTime() else 0L
                             firstVideoPtsUs = vp.ptsUs
+                            if (!playingAtFrame) {
+                                val clampedPtsUs = maxOf(vp.ptsUs, activeSeekFloorUs.get())
+                                notifyPosition(clampedPtsUs / 1000L, force = true, generation = vp.generation)
+                            }
                         } else {
                             while (!stopped.get() && wantToPlay.get() && vp.generation == seekGeneration.get()) {
                                 // Safety valve: never stall demuxer if videoQueue is full while audioQueue awaits interleaved packets
@@ -959,7 +1064,7 @@ internal class DesktopFfmpegPlayer(
                     } else {
                         // Silent stream fallback: pace against monotonic System.nanoTime()
                         if (wallClockAnchorNs == 0L || lastWallGen != vp.generation) {
-                            wallClockAnchorNs = System.nanoTime()
+                            wallClockAnchorNs = if (playingAtFrame) System.nanoTime() else 0L
                             ptsAnchorUs = vp.ptsUs
                             lastWallGen = vp.generation
                         } else {
@@ -978,7 +1083,7 @@ internal class DesktopFfmpegPlayer(
                         }
                         val clampedPtsUs = maxOf(vp.ptsUs, activeSeekFloorUs.get())
                         audioClockUs.set(clampedPtsUs)
-                        notifyPosition(clampedPtsUs / 1000L, force = false, generation = vp.generation)
+                        notifyPosition(clampedPtsUs / 1000L, force = !playingAtFrame, generation = vp.generation)
                     }
 
                     if (stopped.get() || vp.generation != seekGeneration.get()) {

@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 sealed class PlayerUiState {
     object Loading : PlayerUiState()
@@ -109,7 +110,9 @@ class PlayerViewModel(
                 }
                 val m3u8Url = streamRes.getOrThrow()
                 val watchInfo = watchInfoDeferred.await().getOrDefault(WatchInfo(fid = fid))
-                val (subs, defaultSub, subData) = subBundleDeferred.await()
+                val initialSubBundle = withTimeoutOrNull(80L) { subBundleDeferred.await() }
+                val (subs, defaultSub, subData) = initialSubBundle
+                    ?: Triple(emptyList(), null, null)
                 val isEpisode = watchInfo.showFid.isNotBlank() || watchInfo.seasonFid.isNotBlank() || watchInfo.nextTitleFid != null
 
                 // Reuse already-loaded seasons/episodes if switching episodes within the same show/season
@@ -151,7 +154,27 @@ class PlayerViewModel(
                     isEpisodesLoading = isEpisode && initialEpisodes.isEmpty()
                 )
 
-                if (subData != null) {
+                if (initialSubBundle == null) {
+                    launch {
+                        val (lateSubs, lateDefaultSub, lateSubData) = subBundleDeferred.await()
+                        val detectedSkipSegments = if (lateSubData != null) {
+                            withContext(Dispatchers.Default) {
+                                IntroRecapDetector.detectFromSrt(lateSubData.content, isEpisode = isEpisode)
+                            }
+                        } else {
+                            emptyList()
+                        }
+                        val current = _uiState.value as? PlayerUiState.Ready
+                        if (current != null && current.watchInfo.fid == fid) {
+                            _uiState.value = current.copy(
+                                subtitles = lateSubs,
+                                activeSubtitle = current.activeSubtitle ?: lateDefaultSub,
+                                activeSubtitleData = current.activeSubtitleData ?: lateSubData,
+                                skipSegments = detectedSkipSegments.ifEmpty { current.skipSegments }
+                            )
+                        }
+                    }
+                } else if (subData != null) {
                     launch {
                         val detectedSkipSegments = withContext(Dispatchers.Default) {
                             IntroRecapDetector.detectFromSrt(subData.content, isEpisode = isEpisode)
