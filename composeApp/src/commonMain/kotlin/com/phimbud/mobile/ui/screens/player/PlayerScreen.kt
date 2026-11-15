@@ -596,7 +596,6 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(if (isLocked) Color.Transparent else Color.Black.copy(alpha = 0.55f))
                     .displayCutoutPadding()
             ) {
                 if (isLocked) {
@@ -644,7 +643,10 @@ fun PlayerScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f, fill = false)
                         ) {
-                            IconButton(onClick = onBackClick) {
+                            IconButton(
+                                onClick = onBackClick,
+                                modifier = Modifier.background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                            ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Quay lại",
@@ -660,17 +662,34 @@ fun PlayerScreen(
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                style = androidx.compose.ui.text.TextStyle(
+                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                        color = Color.Black.copy(alpha = 0.85f),
+                                        blurRadius = 6f
+                                    )
+                                )
                             )
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { showServerDialog = true }) {
-                                Text(
-                                    text = "Server ${readyState?.currentServer ?: viewModel.currentServer}",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                            Surface(
+                                onClick = { showServerDialog = true },
+                                color = Color.White.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Server ${readyState?.currentServer ?: viewModel.currentServer}",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
 
                             Surface(
@@ -740,7 +759,10 @@ fun PlayerScreen(
                                 }
                             }
 
-                            IconButton(onClick = { isLocked = true }) {
+                            IconButton(
+                                onClick = { isLocked = true },
+                                modifier = Modifier.background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Default.LockOpen,
                                     contentDescription = "Khóa màn hình",
@@ -763,7 +785,9 @@ fun PlayerScreen(
                                 controlsInteractionTick++
                                 controller.seekTo((controller.currentPositionMs() - 10_000L).coerceAtLeast(0L))
                             },
-                            modifier = Modifier.size(54.dp)
+                            modifier = Modifier
+                                .size(54.dp)
+                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Replay10,
@@ -782,7 +806,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(68.dp)
-                                .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f), CircleShape)
                         ) {
                             Icon(
                                 imageVector = if (controller.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -800,7 +824,9 @@ fun PlayerScreen(
                                 val maxDur = controller.durationMs.takeIf { it > 0L } ?: Long.MAX_VALUE
                                 controller.seekTo((controller.currentPositionMs() + 10_000L).coerceAtMost(maxDur))
                             },
-                            modifier = Modifier.size(54.dp)
+                            modifier = Modifier
+                                .size(54.dp)
+                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Forward10,
@@ -1693,7 +1719,14 @@ private fun PlayerBottomBar(
             Text(
                 text = "${formatPlaybackTime(currentPosition)} / ${formatPlaybackTime(duration)}",
                 color = Color.White,
-                fontSize = 13.sp
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                style = androidx.compose.ui.text.TextStyle(
+                    shadow = androidx.compose.ui.graphics.Shadow(
+                        color = Color.Black.copy(alpha = 0.85f),
+                        blurRadius = 6f
+                    )
+                )
             )
 
             Row(
