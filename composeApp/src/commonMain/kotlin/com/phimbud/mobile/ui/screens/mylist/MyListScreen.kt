@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.mylist
 
+import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -89,15 +90,15 @@ fun MyListScreen(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(NetflixDarkGray)
+                .liquidGlass(RoundedCornerShape(24.dp), fillAlpha = 0.09f)
+                .clip(RoundedCornerShape(24.dp))
                 .padding(14.dp)
         ) {
             Box(
                 modifier = Modifier
                     .size(50.dp)
-                    .clip(CircleShape)
-                    .background(NetflixRed),
+                    .liquidGlass(CircleShape, tint = NetflixRed, fillAlpha = 0.24f)
+                    .clip(CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -122,7 +123,7 @@ fun MyListScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
-                                .background(NetflixGold, RoundedCornerShape(3.dp))
+                                .liquidGlass(RoundedCornerShape(50), tint = NetflixGold, fillAlpha = 0.24f)
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                         ) {
                             Text(

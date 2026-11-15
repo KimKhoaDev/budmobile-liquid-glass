@@ -133,8 +133,9 @@ fun HeroBanner(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
-                            color = NetflixRed,
-                            shape = RoundedCornerShape(4.dp)
+                            color = Color.Transparent,
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.liquidGlass(RoundedCornerShape(4.dp), tint = NetflixRed, fillAlpha = 0.22f)
                         ) {
                             Text(
                                 text = "TOP 10",
@@ -188,8 +189,9 @@ fun HeroBanner(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Surface(
-                        color = NetflixDarkGray,
-                        shape = RoundedCornerShape(3.dp)
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(3.dp),
+                        modifier = Modifier.liquidGlass(RoundedCornerShape(3.dp))
                     ) {
                         Text(
                             text = "HD",
@@ -209,11 +211,12 @@ fun HeroBanner(
                     Button(
                         onClick = onPlayClick,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White,
+                            containerColor = Color.Transparent,
                             contentColor = Color.Black
                         ),
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(horizontal = 26.dp, vertical = 12.dp)
+                        shape = RoundedCornerShape(50),
+                        contentPadding = PaddingValues(horizontal = 26.dp, vertical = 12.dp),
+                        modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
@@ -233,11 +236,12 @@ fun HeroBanner(
                     Button(
                         onClick = onInfoClick,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White.copy(alpha = 0.22f),
+                            containerColor = Color.Transparent,
                             contentColor = Color.White
                         ),
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp)
+                        shape = RoundedCornerShape(50),
+                        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
+                        modifier = Modifier.liquidGlass(RoundedCornerShape(50))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Info,
@@ -268,8 +272,9 @@ fun HeroBanner(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Surface(
-                            color = NetflixRed,
-                            shape = RoundedCornerShape(4.dp)
+                            color = Color.Transparent,
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.liquidGlass(RoundedCornerShape(4.dp), tint = NetflixRed, fillAlpha = 0.22f)
                         ) {
                             Text(
                                 text = "TOP 10",
@@ -333,12 +338,13 @@ fun HeroBanner(
                     Button(
                         onClick = onPlayClick,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White,
+                            containerColor = Color.Transparent,
                             contentColor = Color.Black
                         ),
-                        shape = RoundedCornerShape(4.dp),
+                        shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
+                            .liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
@@ -356,12 +362,13 @@ fun HeroBanner(
                     Button(
                         onClick = onInfoClick,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = NetflixCard,
+                            containerColor = Color.Transparent,
                             contentColor = Color.White
                         ),
-                        shape = RoundedCornerShape(4.dp),
+                        shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                         modifier = Modifier.weight(1f).padding(start = 8.dp)
+                            .liquidGlass(RoundedCornerShape(50))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Info,

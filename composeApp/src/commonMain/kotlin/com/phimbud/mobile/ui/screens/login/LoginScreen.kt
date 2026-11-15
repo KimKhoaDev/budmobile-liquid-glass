@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.login
 
+import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -101,15 +102,15 @@ fun LoginScreen(
                     imeAction = ImeAction.Next
                 ),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NetflixRed,
-                    unfocusedBorderColor = NetflixCard,
+                    focusedBorderColor = NetflixRed.copy(alpha = 0.7f),
+                    unfocusedBorderColor = Color.Transparent,
                     focusedTextColor = NetflixTextPrimary,
                     unfocusedTextColor = NetflixTextPrimary,
-                    focusedContainerColor = NetflixDarkGray,
-                    unfocusedContainerColor = NetflixDarkGray
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
                 ),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.fillMaxWidth().liquidGlass(RoundedCornerShape(50), fillAlpha = 0.1f)
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -131,15 +132,15 @@ fun LoginScreen(
                     }
                 ),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NetflixRed,
-                    unfocusedBorderColor = NetflixCard,
+                    focusedBorderColor = NetflixRed.copy(alpha = 0.7f),
+                    unfocusedBorderColor = Color.Transparent,
                     focusedTextColor = NetflixTextPrimary,
                     unfocusedTextColor = NetflixTextPrimary,
-                    focusedContainerColor = NetflixDarkGray,
-                    unfocusedContainerColor = NetflixDarkGray
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
                 ),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.fillMaxWidth().liquidGlass(RoundedCornerShape(50), fillAlpha = 0.1f)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -164,13 +165,14 @@ fun LoginScreen(
                 },
                 enabled = uiState !is LoginUiState.Loading,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = NetflixRed,
+                    containerColor = Color.Transparent,
                     contentColor = Color.White
                 ),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(50),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
+                    .liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
             ) {
                 if (uiState is LoginUiState.Loading) {
                     CircularProgressIndicator(

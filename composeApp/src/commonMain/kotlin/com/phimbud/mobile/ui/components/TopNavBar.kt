@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -95,7 +96,11 @@ fun TopNavBar(
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .then(
+                                if (selected) Modifier.liquidGlass(RoundedCornerShape(50), fillAlpha = 0.14f)
+                                else Modifier
+                            )
+                            .clip(RoundedCornerShape(50))
                             .clickable { onNavigate(item.route) }
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
@@ -126,7 +131,7 @@ fun TopNavBar(
             // Search Quick Button
             IconButton(
                 onClick = { onNavigate("search") },
-                modifier = Modifier.size(38.dp)
+                modifier = Modifier.size(38.dp).liquidGlass(CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Search,
@@ -142,7 +147,7 @@ fun TopNavBar(
             if (onLogoutClick != null) {
                 IconButton(
                     onClick = onLogoutClick,
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(38.dp).liquidGlass(CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Logout,

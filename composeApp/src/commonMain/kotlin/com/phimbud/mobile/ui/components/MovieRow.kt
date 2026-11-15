@@ -162,8 +162,8 @@ fun MovieRow(
                         .align(Alignment.CenterStart)
                         .padding(start = 12.dp)
                         .size(46.dp)
+                        .liquidGlass(CircleShape, fillAlpha = 0.18f)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.78f))
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBackIos,
@@ -186,8 +186,8 @@ fun MovieRow(
                         .align(Alignment.CenterEnd)
                         .padding(end = 12.dp)
                         .size(46.dp)
+                        .liquidGlass(CircleShape, fillAlpha = 0.18f)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.78f))
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,

@@ -12,6 +12,14 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.isSpecified
+import com.kyant.backdrop.backdrops.emptyBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -88,3 +96,20 @@ actual fun GlassBottomNavBar(
         }
     }
 }
+
+actual fun Modifier.liquidGlass(shape: Shape, tint: Color, fillAlpha: Float): Modifier =
+    this.drawBackdrop(
+        backdrop = emptyBackdrop(),
+        shape = { shape },
+        effects = {},
+        highlight = { Highlight.Default.copy(alpha = 0.9f) },
+        shadow = { Shadow(radius = 10.dp, color = Color.Black.copy(alpha = 0.35f)) },
+        innerShadow = { InnerShadow(radius = 6.dp, color = Color.White.copy(alpha = 0.18f)) },
+        onDrawSurface = {
+            if (tint.isSpecified) {
+                drawRect(tint.copy(alpha = (fillAlpha * 4f).coerceAtMost(0.85f)))
+            } else {
+                drawRect(Color.White.copy(alpha = fillAlpha))
+            }
+        }
+    )

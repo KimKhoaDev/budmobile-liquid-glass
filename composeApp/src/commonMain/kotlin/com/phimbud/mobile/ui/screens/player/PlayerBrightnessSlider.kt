@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.player
 
+import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -65,10 +66,9 @@ fun PlayerBrightnessBar(
     val icon = brightnessIconForLevel(clampedBrightness)
 
     Surface(
-        color = NetflixDarkGray.copy(alpha = 0.88f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f)),
-        shape = RoundedCornerShape(20.dp),
-        modifier = modifier
+        color = Color.Transparent,
+        shape = RoundedCornerShape(28.dp),
+        modifier = modifier.liquidGlass(RoundedCornerShape(28.dp), tint = Color.Black, fillAlpha = 0.14f)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -93,8 +93,8 @@ fun PlayerBrightnessBar(
                 modifier = Modifier
                     .weight(1f)
                     .width(8.dp)
+                    .liquidGlass(CircleShape, fillAlpha = 0.16f)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.22f))
                     .then(
                         if (currentOnBrightnessChanged != null) {
                             Modifier.pointerInput(Unit) {

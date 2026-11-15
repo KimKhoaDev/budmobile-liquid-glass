@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.home
 
+import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -113,7 +114,8 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = { viewModel.loadHomeFeed() },
-                        colors = ButtonDefaults.buttonColors(containerColor = NetflixRed)
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                        modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                     ) {
                         Text("Thử lại")
                     }
@@ -294,7 +296,8 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             Button(
                                 onClick = { viewModel.loadTop10(forceRefresh = true) },
-                                colors = ButtonDefaults.buttonColors(containerColor = NetflixRed)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                                modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                             ) {
                                 Text("Tải lại")
                             }
@@ -527,12 +530,13 @@ private fun NetflixFilterPill(
 ) {
     Surface(
         onClick = onClick,
-        color = if (selected) NetflixRed else Color.Black.copy(alpha = 0.55f),
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) NetflixRed else Color.White.copy(alpha = 0.35f)
-        ),
-        shape = RoundedCornerShape(20.dp)
+        color = Color.Transparent,
+        shape = RoundedCornerShape(50),
+        modifier = Modifier.liquidGlass(
+            RoundedCornerShape(50),
+            tint = if (selected) NetflixRed else Color.Unspecified,
+            fillAlpha = if (selected) 0.22f else 0.12f
+        )
     ) {
         Text(
             text = label,
@@ -554,9 +558,13 @@ private fun NetflixCategoryChip(
 ) {
     Surface(
         onClick = onClick,
-        color = if (selected) Color.White else NetflixCard.copy(alpha = 0.8f),
-        border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
-        shape = RoundedCornerShape(16.dp)
+        color = Color.Transparent,
+        shape = RoundedCornerShape(50),
+        modifier = Modifier.liquidGlass(
+            RoundedCornerShape(50),
+            tint = if (selected) Color.White else Color.Unspecified,
+            fillAlpha = if (selected) 0.23f else 0.12f
+        )
     ) {
         Text(
             text = label,

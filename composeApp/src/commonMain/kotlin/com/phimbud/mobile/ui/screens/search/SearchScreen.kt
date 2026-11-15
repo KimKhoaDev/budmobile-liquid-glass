@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.search
 
+import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -108,16 +109,16 @@ fun SearchScreen(
                 }
             },
             singleLine = true,
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(50),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = NetflixDarkGray,
-                unfocusedContainerColor = NetflixDarkGray,
-                focusedBorderColor = NetflixRed,
-                unfocusedBorderColor = NetflixCard,
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                focusedBorderColor = NetflixRed.copy(alpha = 0.7f),
+                unfocusedBorderColor = Color.Transparent,
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White
             ),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().liquidGlass(RoundedCornerShape(50), fillAlpha = 0.1f)
         )
 
         Spacer(modifier = Modifier.height(16.dp))

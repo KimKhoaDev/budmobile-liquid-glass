@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.browse
 
+import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -174,7 +175,7 @@ fun BrowseScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
-                            .background(NetflixRed, RoundedCornerShape(10.dp))
+                            .liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                             .padding(horizontal = 7.dp, vertical = 2.dp)
                     ) {
                         Text(
@@ -223,11 +224,12 @@ fun BrowseScreen(
                             }
                         }
                     },
-                    color = if (isPanelCurrentlyVisible) NetflixCard else NetflixDarkGray,
-                    shape = RoundedCornerShape(6.dp),
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = if (filter.isActive) NetflixRed.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.2f)
+                    color = Color.Transparent,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.liquidGlass(
+                        RoundedCornerShape(50),
+                        tint = if (filter.isActive) NetflixRed else Color.Unspecified,
+                        fillAlpha = if (filter.isActive) 0.2f else if (isPanelCurrentlyVisible) 0.18f else 0.12f
                     )
                 ) {
                     Row(
@@ -352,8 +354,9 @@ fun BrowseScreen(
                         Spacer(modifier = Modifier.height(14.dp))
                         Button(
                             onClick = { viewModel.retry() },
-                            colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
-                            shape = RoundedCornerShape(4.dp)
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                         ) {
                             Text("Thử lại", maxLines = 1, softWrap = false)
                         }
@@ -381,8 +384,9 @@ fun BrowseScreen(
                             Spacer(modifier = Modifier.height(14.dp))
                             Button(
                                 onClick = { viewModel.resetFilter() },
-                                colors = ButtonDefaults.buttonColors(containerColor = NetflixRed),
-                                shape = RoundedCornerShape(4.dp)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                             ) {
                                 Text("Đặt lại bộ lọc", maxLines = 1, softWrap = false)
                             }
@@ -441,10 +445,9 @@ private fun BrowseFilterCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 4.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(NetflixDarkGray)
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
-            .padding(12.dp),
+            .liquidGlass(RoundedCornerShape(24.dp), fillAlpha = 0.09f)
+            .clip(RoundedCornerShape(24.dp))
+            .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         // Row 1: Loại phim & Thể loại
@@ -566,9 +569,9 @@ private fun RemovableFilterChip(
 ) {
     Surface(
         onClick = onRemove,
-        color = NetflixRed.copy(alpha = 0.18f),
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, NetflixRed.copy(alpha = 0.65f))
+        color = Color.Transparent,
+        shape = RoundedCornerShape(50),
+        modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.16f)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -747,19 +750,16 @@ private fun FilterDropdown(
             Surface(
                 onClick = { if (enabled) expanded = true },
                 enabled = enabled,
-                color = if (enabled) NetflixCard else NetflixCard.copy(alpha = 0.45f),
-                shape = RoundedCornerShape(6.dp),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = when {
-                        !enabled -> Color.White.copy(alpha = 0.08f)
-                        !isDefault -> NetflixRed.copy(alpha = 0.8f)
-                        else -> Color.White.copy(alpha = 0.14f)
-                    }
-                ),
+                color = Color.Transparent,
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(38.dp)
+                    .liquidGlass(
+                        RoundedCornerShape(14.dp),
+                        tint = if (enabled && !isDefault) NetflixRed else Color.Unspecified,
+                        fillAlpha = if (!enabled) 0.05f else if (!isDefault) 0.16f else 0.11f
+                    )
             ) {
                 Row(
                     modifier = Modifier

@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.player
 
+import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -510,9 +511,9 @@ fun PlayerScreen(
             val icon = osdIcon
             if (icon != null && osdLabel.isNotBlank()) {
                 Surface(
-                    color = NetflixDarkGray.copy(alpha = 0.88f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
-                    shape = RoundedCornerShape(24.dp)
+                    color = Color.Transparent,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.14f)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -608,11 +609,12 @@ fun PlayerScreen(
                             isLocked = false
                             controlsInteractionTick++
                         },
-                        color = NetflixDarkGray.copy(alpha = 0.88f),
-                        shape = RoundedCornerShape(24.dp),
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(50),
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(20.dp)
+                            .liquidGlass(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.14f)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -649,7 +651,7 @@ fun PlayerScreen(
                         ) {
                             IconButton(
                                 onClick = onBackClick,
-                                modifier = Modifier.background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                modifier = Modifier.liquidGlass(CircleShape, fillAlpha = 0.16f)
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -765,7 +767,7 @@ fun PlayerScreen(
 
                             IconButton(
                                 onClick = { isLocked = true },
-                                modifier = Modifier.background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                modifier = Modifier.liquidGlass(CircleShape, fillAlpha = 0.16f)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.LockOpen,
@@ -791,7 +793,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(54.dp)
-                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                .liquidGlass(CircleShape, fillAlpha = 0.16f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Replay10,
@@ -810,7 +812,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(68.dp)
-                                .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                .liquidGlass(CircleShape, fillAlpha = 0.16f)
                         ) {
                             Icon(
                                 imageVector = if (controller.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -830,7 +832,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(54.dp)
-                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                .liquidGlass(CircleShape, fillAlpha = 0.16f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Forward10,

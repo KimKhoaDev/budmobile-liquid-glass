@@ -102,8 +102,9 @@ fun Top10MovieRow(
                     .padding(end = 8.dp)
             ) {
                 Surface(
-                    color = NetflixRed,
-                    shape = RoundedCornerShape(4.dp)
+                    color = Color.Transparent,
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.liquidGlass(RoundedCornerShape(4.dp), tint = NetflixRed, fillAlpha = 0.22f)
                 ) {
                     Text(
                         text = "TOP 10",
@@ -179,8 +180,8 @@ fun Top10MovieRow(
                         .align(Alignment.CenterStart)
                         .padding(start = 12.dp)
                         .size(46.dp)
+                        .liquidGlass(CircleShape, fillAlpha = 0.18f)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.78f))
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBackIos,
@@ -203,8 +204,8 @@ fun Top10MovieRow(
                         .align(Alignment.CenterEnd)
                         .padding(end = 12.dp)
                         .size(46.dp)
+                        .liquidGlass(CircleShape, fillAlpha = 0.18f)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.78f))
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
@@ -392,13 +393,13 @@ fun Top10RankedListItem(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .liquidGlass(RoundedCornerShape(18.dp), fillAlpha = 0.08f)
+            .clip(RoundedCornerShape(18.dp))
             .border(
                 width = if (isWideScreen && isHovered) 1.dp else 0.dp,
                 color = borderColor,
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(18.dp)
             )
-            .background(NetflixDarkGray)
             .hoverable(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
