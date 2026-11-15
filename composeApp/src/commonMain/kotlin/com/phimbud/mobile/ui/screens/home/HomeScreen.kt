@@ -56,7 +56,6 @@ import com.phimbud.mobile.ui.components.MovieRow
 import com.phimbud.mobile.ui.components.Top10MovieRow
 import com.phimbud.mobile.ui.components.Top10RankedListItem
 import com.phimbud.mobile.ui.components.LocalBottomOverlayInset
-import com.phimbud.mobile.ui.components.liquidGlass
 import com.phimbud.mobile.ui.theme.NetflixBlack
 import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixRed
@@ -114,12 +113,7 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = { viewModel.loadHomeFeed() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Transparent,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.liquidGlass(RoundedCornerShape(8.dp), tint = NetflixRed, fillAlpha = 0.35f)
+                        colors = ButtonDefaults.buttonColors(containerColor = NetflixRed)
                     ) {
                         Text("Thử lại")
                     }
@@ -300,12 +294,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             Button(
                                 onClick = { viewModel.loadTop10(forceRefresh = true) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.Transparent,
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.liquidGlass(RoundedCornerShape(8.dp), tint = NetflixRed, fillAlpha = 0.35f)
+                                colors = ButtonDefaults.buttonColors(containerColor = NetflixRed)
                             ) {
                                 Text("Tải lại")
                             }
@@ -536,15 +525,14 @@ private fun NetflixFilterPill(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .liquidGlass(
-                shape = RoundedCornerShape(20.dp),
-                tint = if (selected) NetflixRed else Color.Unspecified,
-                fillAlpha = if (selected) 0.5f else 0.12f
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 7.dp)
+    Surface(
+        onClick = onClick,
+        color = if (selected) NetflixRed else Color.Black.copy(alpha = 0.55f),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (selected) NetflixRed else Color.White.copy(alpha = 0.35f)
+        ),
+        shape = RoundedCornerShape(20.dp)
     ) {
         Text(
             text = label,
@@ -552,7 +540,8 @@ private fun NetflixFilterPill(
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
-            softWrap = false
+            softWrap = false,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
         )
     }
 }
@@ -563,23 +552,20 @@ private fun NetflixCategoryChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .liquidGlass(
-                shape = RoundedCornerShape(16.dp),
-                tint = if (selected) Color.White else Color.Unspecified,
-                fillAlpha = if (selected) 0.4f else 0.1f
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 5.dp)
+    Surface(
+        onClick = onClick,
+        color = if (selected) Color.White else NetflixCard.copy(alpha = 0.8f),
+        border = if (selected) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Text(
             text = label,
-            color = if (selected) Color.White else NetflixTextPrimary,
+            color = if (selected) Color.Black else NetflixTextPrimary,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            softWrap = false
+            softWrap = false,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
         )
     }
 }

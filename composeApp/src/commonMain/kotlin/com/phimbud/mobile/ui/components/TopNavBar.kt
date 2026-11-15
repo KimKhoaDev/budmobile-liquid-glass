@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.sp
 import com.phimbud.mobile.ui.theme.NetflixBlack
 import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
-import com.phimbud.mobile.ui.components.liquidGlass
 
 data class TopBarItem(
     val route: String,
@@ -127,9 +126,7 @@ fun TopNavBar(
             // Search Quick Button
             IconButton(
                 onClick = { onNavigate("search") },
-                modifier = Modifier
-                    .size(38.dp)
-                    .liquidGlass(RoundedCornerShape(19.dp), fillAlpha = if (currentRoute == "search") 0.35f else 0.12f)
+                modifier = Modifier.size(38.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Search,
@@ -145,9 +142,7 @@ fun TopNavBar(
             if (onLogoutClick != null) {
                 IconButton(
                     onClick = onLogoutClick,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .liquidGlass(RoundedCornerShape(19.dp), fillAlpha = 0.12f)
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Logout,

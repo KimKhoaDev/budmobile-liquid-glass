@@ -43,7 +43,6 @@ import com.phimbud.mobile.ui.theme.NetflixDarkGray
 import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
-import com.phimbud.mobile.ui.components.liquidGlass
 
 @Composable
 fun LoginScreen(
@@ -165,14 +164,13 @@ fun LoginScreen(
                 },
                 enabled = uiState !is LoginUiState.Loading,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.Transparent,
+                    containerColor = NetflixRed,
                     contentColor = Color.White
                 ),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
-                    .liquidGlass(RoundedCornerShape(8.dp), tint = NetflixRed, fillAlpha = 0.35f)
             ) {
                 if (uiState is LoginUiState.Loading) {
                     CircularProgressIndicator(

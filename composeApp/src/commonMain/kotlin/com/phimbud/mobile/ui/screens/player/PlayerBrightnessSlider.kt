@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phimbud.mobile.ui.theme.NetflixDarkGray
 import com.phimbud.mobile.ui.theme.NetflixRed
-import com.phimbud.mobile.ui.components.liquidGlass
 import kotlin.math.roundToInt
 
 fun brightnessIconForLevel(brightness: Float): ImageVector {
@@ -65,8 +64,11 @@ fun PlayerBrightnessBar(
     val percentText = "${(clampedBrightness * 100).roundToInt()}%"
     val icon = brightnessIconForLevel(clampedBrightness)
 
-    Box(
-        modifier = modifier.liquidGlass(RoundedCornerShape(20.dp), fillAlpha = 0.22f)
+    Surface(
+        color = NetflixDarkGray.copy(alpha = 0.88f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f)),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,

@@ -63,7 +63,6 @@ import com.phimbud.mobile.ui.theme.NetflixDarkGray
 import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
-import com.phimbud.mobile.ui.components.liquidGlass
 import kotlinx.coroutines.launch
 
 private val Top10RankOutlineStroke = Stroke(
@@ -102,8 +101,9 @@ fun Top10MovieRow(
                     .weight(1f)
                     .padding(end = 8.dp)
             ) {
-                Box(
-                    modifier = Modifier.liquidGlass(RoundedCornerShape(4.dp), tint = NetflixRed)
+                Surface(
+                    color = NetflixRed,
+                    shape = RoundedCornerShape(4.dp)
                 ) {
                     Text(
                         text = "TOP 10",
@@ -179,7 +179,8 @@ fun Top10MovieRow(
                         .align(Alignment.CenterStart)
                         .padding(start = 12.dp)
                         .size(46.dp)
-                        .liquidGlass(CircleShape, fillAlpha = 0.28f)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.78f))
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBackIos,
@@ -202,7 +203,8 @@ fun Top10MovieRow(
                         .align(Alignment.CenterEnd)
                         .padding(end = 12.dp)
                         .size(46.dp)
-                        .liquidGlass(CircleShape, fillAlpha = 0.28f)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.78f))
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
@@ -338,7 +340,10 @@ fun Top10PosterCard(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .liquidGlass(RoundedCornerShape(bottomStart = 6.dp), tint = NetflixRed)
+                        .background(
+                            color = NetflixRed,
+                            shape = RoundedCornerShape(bottomStart = 6.dp)
+                        )
                         .padding(horizontal = 6.dp, vertical = 3.5.dp)
                 ) {
                     Text(
@@ -387,12 +392,13 @@ fun Top10RankedListItem(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .liquidGlass(RoundedCornerShape(10.dp), fillAlpha = 0.16f)
+            .clip(RoundedCornerShape(10.dp))
             .border(
                 width = if (isWideScreen && isHovered) 1.dp else 0.dp,
                 color = borderColor,
                 shape = RoundedCornerShape(10.dp)
             )
+            .background(NetflixDarkGray)
             .hoverable(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
@@ -484,12 +490,13 @@ fun Top10RankedListItem(
             onClick = onPlayClick,
             modifier = Modifier
                 .size(if (isWideScreen) 46.dp else 40.dp)
-                .liquidGlass(CircleShape, fillAlpha = 0.35f)
+                .clip(CircleShape)
+                .background(Color.White)
         ) {
             Icon(
                 imageVector = Icons.Default.PlayArrow,
                 contentDescription = "Phát phim",
-                tint = Color.White,
+                tint = Color.Black,
                 modifier = Modifier.size(if (isWideScreen) 28.dp else 24.dp)
             )
         }

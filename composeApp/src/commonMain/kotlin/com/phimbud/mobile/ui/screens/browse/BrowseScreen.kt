@@ -83,7 +83,6 @@ import com.phimbud.mobile.core.model.FilterOption
 import com.phimbud.mobile.core.model.Movie
 import com.phimbud.mobile.core.platform.formatOneDecimal
 import com.phimbud.mobile.ui.components.LocalBottomOverlayInset
-import com.phimbud.mobile.ui.components.liquidGlass
 import com.phimbud.mobile.ui.theme.NetflixBlack
 import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixDarkGray
@@ -208,28 +207,28 @@ fun BrowseScreen(
                 }
 
                 val isPanelCurrentlyVisible = isFilterPanelExpanded && !isScrolledPastFilter
-                Box(
-                    modifier = Modifier
-                        .liquidGlass(
-                            shape = RoundedCornerShape(6.dp),
-                            tint = if (filter.isActive) NetflixRed else Color.Unspecified,
-                            fillAlpha = if (isPanelCurrentlyVisible) 0.28f else 0.14f
-                        )
-                        .clickable {
-                            if (isFilterPanelExpanded && isScrolledPastFilter) {
+                Surface(
+                    onClick = {
+                        if (isFilterPanelExpanded && isScrolledPastFilter) {
+                            coroutineScope.launch {
+                                gridState.animateScrollToItem(0)
+                            }
+                        } else {
+                            val nextExpanded = !isFilterPanelExpanded
+                            isFilterPanelExpanded = nextExpanded
+                            if (nextExpanded && isScrolledPastFilter) {
                                 coroutineScope.launch {
                                     gridState.animateScrollToItem(0)
                                 }
-                            } else {
-                                val nextExpanded = !isFilterPanelExpanded
-                                isFilterPanelExpanded = nextExpanded
-                                if (nextExpanded && isScrolledPastFilter) {
-                                    coroutineScope.launch {
-                                        gridState.animateScrollToItem(0)
-                                    }
-                                }
                             }
                         }
+                    },
+                    color = if (isPanelCurrentlyVisible) NetflixCard else NetflixDarkGray,
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (filter.isActive) NetflixRed.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.2f)
+                    )
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -442,7 +441,9 @@ private fun BrowseFilterCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 4.dp)
-            .liquidGlass(shape = RoundedCornerShape(10.dp), fillAlpha = 0.16f)
+            .clip(RoundedCornerShape(10.dp))
+            .background(NetflixDarkGray)
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -563,14 +564,11 @@ private fun RemovableFilterChip(
     label: String,
     onRemove: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .liquidGlass(
-                shape = RoundedCornerShape(14.dp),
-                tint = NetflixRed,
-                fillAlpha = 0.22f
-            )
-            .clickable(onClick = onRemove)
+    Surface(
+        onClick = onRemove,
+        color = NetflixRed.copy(alpha = 0.18f),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, NetflixRed.copy(alpha = 0.65f))
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -746,16 +744,22 @@ private fun FilterDropdown(
         )
 
         Box(modifier = Modifier.fillMaxWidth()) {
-            Box(
+            Surface(
+                onClick = { if (enabled) expanded = true },
+                enabled = enabled,
+                color = if (enabled) NetflixCard else NetflixCard.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = when {
+                        !enabled -> Color.White.copy(alpha = 0.08f)
+                        !isDefault -> NetflixRed.copy(alpha = 0.8f)
+                        else -> Color.White.copy(alpha = 0.14f)
+                    }
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(38.dp)
-                    .liquidGlass(
-                        shape = RoundedCornerShape(6.dp),
-                        tint = if (!isDefault) NetflixRed else Color.Unspecified,
-                        fillAlpha = if (!enabled) 0.05f else if (!isDefault) 0.22f else 0.12f
-                    )
-                    .clickable(enabled = enabled) { expanded = true }
             ) {
                 Row(
                     modifier = Modifier

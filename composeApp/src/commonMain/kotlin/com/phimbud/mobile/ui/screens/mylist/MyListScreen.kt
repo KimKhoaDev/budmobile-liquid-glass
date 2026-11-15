@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.phimbud.mobile.core.model.Movie
 import com.phimbud.mobile.ui.components.LocalBottomOverlayInset
-import com.phimbud.mobile.ui.components.liquidGlass
 import com.phimbud.mobile.ui.theme.NetflixBlack
 import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixDarkGray
@@ -90,7 +89,8 @@ fun MyListScreen(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .liquidGlass(RoundedCornerShape(8.dp), fillAlpha = 0.16f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(NetflixDarkGray)
                 .padding(14.dp)
         ) {
             Box(
@@ -122,7 +122,7 @@ fun MyListScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
-                                .liquidGlass(RoundedCornerShape(3.dp), tint = NetflixGold, fillAlpha = 0.35f)
+                                .background(NetflixGold, RoundedCornerShape(3.dp))
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                         ) {
                             Text(

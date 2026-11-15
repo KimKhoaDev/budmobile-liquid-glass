@@ -57,7 +57,6 @@ import com.phimbud.mobile.ui.theme.NetflixDarkGray
 import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
-import com.phimbud.mobile.ui.components.liquidGlass
 
 @Composable
 fun SearchScreen(
@@ -111,16 +110,14 @@ fun SearchScreen(
             singleLine = true,
             shape = RoundedCornerShape(8.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedBorderColor = Color.Transparent,
-                unfocusedBorderColor = Color.Transparent,
+                focusedContainerColor = NetflixDarkGray,
+                unfocusedContainerColor = NetflixDarkGray,
+                focusedBorderColor = NetflixRed,
+                unfocusedBorderColor = NetflixCard,
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White
             ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .liquidGlass(RoundedCornerShape(8.dp), fillAlpha = 0.16f)
+            modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(modifier = Modifier.height(16.dp))
