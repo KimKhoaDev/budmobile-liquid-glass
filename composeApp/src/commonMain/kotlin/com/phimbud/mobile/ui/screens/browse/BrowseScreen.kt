@@ -275,7 +275,7 @@ fun BrowseScreen(
 
         // Main Scrollable Grid (Filter Panel at top scrolls away naturally with posters)
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+            columns = GridCells.Adaptive(minSize = 115.dp),
             state = gridState,
             contentPadding = PaddingValues(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),

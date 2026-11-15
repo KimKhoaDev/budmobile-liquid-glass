@@ -30,7 +30,7 @@ fun main() = application {
         PhimBudRepository(PlatformContext())
     }
     val windowState = rememberWindowState(
-        size = DpSize(430.dp, 860.dp),
+        size = DpSize(1200.dp, 750.dp),
         position = WindowPosition.Aligned(Alignment.Center)
     )
     val windowController = remember(windowState) {

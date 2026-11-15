@@ -2,6 +2,7 @@ package com.phimbud.mobile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -16,6 +17,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -34,6 +36,7 @@ import com.phimbud.mobile.core.platform.configurePlatformImageLoader
 import com.phimbud.mobile.core.platform.platformImageCacheDirectory
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import com.phimbud.mobile.ui.components.BottomNavBar
+import com.phimbud.mobile.ui.components.TopNavBar
 import com.phimbud.mobile.ui.screens.browse.BrowseScreen
 import com.phimbud.mobile.ui.screens.browse.BrowseViewModel
 import com.phimbud.mobile.ui.screens.detail.DetailScreen
@@ -123,49 +126,103 @@ fun App(
                     }
                 }
 
+                val browseFilter by browseVm.filter.collectAsState()
+
+                val activeTopRoute = when (currentTab) {
+                    "home" -> "home"
+                    "search" -> "search"
+                    "mylist" -> "mylist"
+                    "browse" -> {
+                        when (browseFilter.type) {
+                            "show" -> "shows"
+                            "movie" -> "movies"
+                            else -> "browse"
+                        }
+                    }
+                    else -> currentTab
+                }
+
                 PlatformBackHandler(enabled = currentTab != "home") {
                     currentTab = "home"
                 }
 
-                Scaffold(
-                    bottomBar = {
-                        BottomNavBar(
-                            currentRoute = currentTab,
-                            onNavigate = { currentTab = it }
-                        )
-                    },
-                    containerColor = NetflixBlack
-                ) { innerPadding ->
-                    Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-                        saveableStateHolder.SaveableStateProvider(currentTab) {
-                            when (currentTab) {
-                                "home" -> {
-                                    val homeVm = viewModel { HomeViewModel(repository) }
-                                    HomeScreen(
-                                        viewModel = homeVm,
-                                        onMovieClick = { movie ->
-                                            navController.navigate("detail/${movie.fid}") {
-                                                launchSingleTop = true
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val isWideScreen = maxWidth >= 720.dp
+
+                    Scaffold(
+                        topBar = {
+                            if (isWideScreen) {
+                                TopNavBar(
+                                    currentRoute = activeTopRoute,
+                                    onNavigate = { route ->
+                                        when (route) {
+                                            "shows" -> {
+                                                browseVm.updateType("show")
+                                                currentTab = "browse"
                                             }
-                                        },
-                                        onPlayClick = { watchFid ->
-                                            navController.navigate("player/$watchFid") {
-                                                launchSingleTop = true
+                                            "movies" -> {
+                                                browseVm.updateType("movie")
+                                                currentTab = "browse"
                                             }
-                                        },
-                                        onSearchClick = {
-                                            currentTab = "search"
-                                        },
-                                        onNavigateToBrowse = { filter ->
-                                            browseVm.updateFilter(filter)
-                                            currentTab = "browse"
-                                        },
-                                        onNavigateToMyList = { tabIndex ->
-                                            myListVm.selectTab(tabIndex)
-                                            currentTab = "mylist"
+                                            "browse" -> {
+                                                browseVm.updateType(null)
+                                                currentTab = "browse"
+                                            }
+                                            else -> {
+                                                currentTab = route
+                                            }
                                         }
-                                    )
-                                }
+                                    },
+                                    onLogoutClick = {
+                                        navController.navigate("login") {
+                                            popUpTo("main") { inclusive = true }
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                )
+                            }
+                        },
+                        bottomBar = {
+                            if (!isWideScreen) {
+                                BottomNavBar(
+                                    currentRoute = currentTab,
+                                    onNavigate = { currentTab = it }
+                                )
+                            }
+                        },
+                        containerColor = NetflixBlack
+                    ) { innerPadding ->
+                        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                            saveableStateHolder.SaveableStateProvider(currentTab) {
+                                when (currentTab) {
+                                    "home" -> {
+                                        val homeVm = viewModel { HomeViewModel(repository) }
+                                        HomeScreen(
+                                            viewModel = homeVm,
+                                            onMovieClick = { movie ->
+                                                navController.navigate("detail/${movie.fid}") {
+                                                    launchSingleTop = true
+                                                }
+                                            },
+                                            onPlayClick = { watchFid ->
+                                                navController.navigate("player/$watchFid") {
+                                                    launchSingleTop = true
+                                                }
+                                            },
+                                            onSearchClick = {
+                                                currentTab = "search"
+                                            },
+                                            onNavigateToBrowse = { filter ->
+                                                browseVm.updateFilter(filter)
+                                                currentTab = "browse"
+                                            },
+                                            onNavigateToMyList = { tabIndex ->
+                                                myListVm.selectTab(tabIndex)
+                                                currentTab = "mylist"
+                                            },
+                                            isWideScreen = isWideScreen
+                                        )
+                                    }
                                 "browse" -> {
                                     LaunchedEffect(Unit) {
                                         browseVm.ensureInitialized()
@@ -213,6 +270,7 @@ fun App(
                         }
                     }
                 }
+            }
             }
 
             composable(

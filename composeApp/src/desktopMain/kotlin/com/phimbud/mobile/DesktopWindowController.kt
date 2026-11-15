@@ -19,7 +19,7 @@ class DesktopWindowController(
     var awtWindow: ComposeWindow? = null
 
     private var savedPlacement: WindowPlacement = WindowPlacement.Floating
-    private var savedSize: DpSize = DpSize(430.dp, 860.dp)
+    private var savedSize: DpSize = DpSize(1200.dp, 750.dp)
     private var savedPosition: WindowPosition = WindowPosition.PlatformDefault
     private var inPlayerMode: Boolean = false
     private var cursorCurrentlyHidden: Boolean = false

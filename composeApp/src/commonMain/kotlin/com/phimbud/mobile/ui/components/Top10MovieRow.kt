@@ -1,7 +1,14 @@
 package com.phimbud.mobile.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,19 +28,24 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +61,7 @@ import com.phimbud.mobile.ui.theme.NetflixDarkGray
 import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
+import kotlinx.coroutines.launch
 
 private val Top10RankOutlineStroke = Stroke(
     width = 7f,
@@ -61,16 +74,22 @@ fun Top10MovieRow(
     movies: List<Movie>,
     onMovieClick: (Movie) -> Unit,
     onSeeAllClick: (() -> Unit)? = null,
+    isWideScreen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     if (movies.isEmpty()) return
     val top10Items = remember(movies) { movies.take(10) }
+    val horizontalMargin = if (isWideScreen) 44.dp else 16.dp
+    val rowInteractionSource = remember { MutableInteractionSource() }
+    val isRowHovered by rowInteractionSource.collectIsHoveredAsState()
+    val rowState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
-    Column(modifier = modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+    Column(modifier = modifier.fillMaxWidth().padding(vertical = if (isWideScreen) 16.dp else 10.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .padding(horizontal = horizontalMargin, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -87,18 +106,18 @@ fun Top10MovieRow(
                     Text(
                         text = "TOP 10",
                         color = Color.White,
-                        fontSize = 10.sp,
+                        fontSize = if (isWideScreen) 11.sp else 10.sp,
                         fontWeight = FontWeight.Black,
                         maxLines = 1,
                         softWrap = false,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = title,
                     color = NetflixTextPrimary,
-                    fontSize = 18.sp,
+                    fontSize = if (isWideScreen) 22.sp else 18.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -109,7 +128,7 @@ fun Top10MovieRow(
                 Text(
                     text = "Bộ lọc ›",
                     color = NetflixRed,
-                    fontSize = 13.sp,
+                    fontSize = if (isWideScreen) 14.sp else 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     softWrap = false,
@@ -121,23 +140,77 @@ fun Top10MovieRow(
             }
         }
 
-        val rowState = rememberLazyListState()
-        LazyRow(
-            state = rowState,
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.platformHorizontalDragScroll(rowState)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .hoverable(rowInteractionSource)
         ) {
-            itemsIndexed(
-                items = top10Items,
-                key = { _, m -> m.fid },
-                contentType = { _, _ -> "top10_card" }
-            ) { index, movie ->
-                Top10PosterCard(
-                    rank = index + 1,
-                    movie = movie,
-                    onClick = { onMovieClick(movie) }
-                )
+            LazyRow(
+                state = rowState,
+                contentPadding = PaddingValues(horizontal = horizontalMargin),
+                horizontalArrangement = Arrangement.spacedBy(if (isWideScreen) 18.dp else 12.dp),
+                modifier = Modifier.platformHorizontalDragScroll(rowState)
+            ) {
+                itemsIndexed(
+                    items = top10Items,
+                    key = { _, m -> m.fid },
+                    contentType = { _, _ -> "top10_card" }
+                ) { index, movie ->
+                    Top10PosterCard(
+                        rank = index + 1,
+                        movie = movie,
+                        onClick = { onMovieClick(movie) },
+                        isWideScreen = isWideScreen
+                    )
+                }
+            }
+
+            // Desktop Left Chevron
+            if (isWideScreen && isRowHovered && rowState.canScrollBackward) {
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            rowState.animateScrollBy(-680f)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 12.dp)
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.78f))
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBackIos,
+                        contentDescription = "Cuộn sang trái",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp).padding(start = 4.dp)
+                    )
+                }
+            }
+
+            // Desktop Right Chevron
+            if (isWideScreen && isRowHovered && rowState.canScrollForward) {
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            rowState.animateScrollBy(680f)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 12.dp)
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.78f))
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                        contentDescription = "Cuộn sang phải",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
@@ -148,28 +221,58 @@ fun Top10PosterCard(
     rank: Int,
     movie: Movie,
     onClick: () -> Unit,
+    isWideScreen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val cardWidth = if (rank >= 10) 154.dp else 142.dp
+    val cardWidth = if (isWideScreen) {
+        if (rank >= 10) 225.dp else 210.dp
+    } else {
+        if (rank >= 10) 154.dp else 142.dp
+    }
+    val boxHeight = if (isWideScreen) 235.dp else 162.dp
+    val posterWidth = if (isWideScreen) 145.dp else 106.dp
+    val posterHeight = if (isWideScreen) 230.dp else 156.dp
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isWideScreen && isHovered) 1.05f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+    )
 
     Column(
         modifier = modifier
             .width(cardWidth)
-            .clickable { onClick() }
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .hoverable(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) { onClick() }
     ) {
         Box(
             modifier = Modifier
                 .width(cardWidth)
-                .height(162.dp)
+                .height(boxHeight)
         ) {
             // Giant Netflix-style Rank Number behind / beside the poster
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .offset(x = if (rank >= 10) (-4).dp else 2.dp, y = 10.dp)
+                    .offset(
+                        x = if (isWideScreen) (if (rank >= 10) (-6).dp else 4.dp) else (if (rank >= 10) (-4).dp else 2.dp),
+                        y = if (isWideScreen) 14.dp else 10.dp
+                    )
             ) {
-                val fontSize = if (rank >= 10) 92.sp else 108.sp
-                val letterSpacing = (-6).sp
+                val fontSize = if (isWideScreen) {
+                    if (rank >= 10) 120.sp else 140.sp
+                } else {
+                    if (rank >= 10) 92.sp else 108.sp
+                }
+                val letterSpacing = if (isWideScreen) (-8).sp else (-6).sp
                 // Outer bright stroke
                 Text(
                     text = rank.toString(),
@@ -196,10 +299,10 @@ fun Top10PosterCard(
             // Movie Poster shifted to the right
             Box(
                 modifier = Modifier
-                    .width(106.dp)
-                    .height(156.dp)
+                    .width(posterWidth)
+                    .height(posterHeight)
                     .align(Alignment.TopEnd)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(NetflixCard)
             ) {
                 if (!movie.posterUrl.isNullOrBlank()) {
@@ -213,7 +316,7 @@ fun Top10PosterCard(
                     Text(
                         text = movie.displayTitle,
                         color = NetflixTextPrimary,
-                        fontSize = 12.sp,
+                        fontSize = if (isWideScreen) 14.sp else 12.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
@@ -231,13 +334,13 @@ fun Top10PosterCard(
                             color = NetflixRed,
                             shape = RoundedCornerShape(bottomStart = 6.dp)
                         )
-                        .padding(horizontal = 5.dp, vertical = 3.dp)
+                        .padding(horizontal = 6.dp, vertical = 3.5.dp)
                 ) {
                     Text(
                         text = "TOP\n10",
                         color = Color.White,
-                        fontSize = 8.sp,
-                        lineHeight = 9.sp,
+                        fontSize = if (isWideScreen) 9.sp else 8.sp,
+                        lineHeight = if (isWideScreen) 10.sp else 9.sp,
                         fontWeight = FontWeight.Black,
                         textAlign = TextAlign.Center
                     )
@@ -249,12 +352,13 @@ fun Top10PosterCard(
 
         Text(
             text = movie.displayTitle,
-            color = NetflixTextPrimary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
+            color = if (isWideScreen && isHovered) Color.White else NetflixTextPrimary,
+            fontSize = if (isWideScreen) 14.sp else 12.sp,
+            fontWeight = if (isWideScreen && isHovered) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = if (isWideScreen) 2 else 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 28.dp)
+            lineHeight = if (isWideScreen) 18.sp else 14.sp,
+            modifier = Modifier.padding(start = if (isWideScreen) 48.dp else 28.dp)
         )
     }
 }
@@ -265,8 +369,11 @@ fun Top10RankedListItem(
     movie: Movie,
     onCardClick: () -> Unit,
     onPlayClick: () -> Unit,
+    isWideScreen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val horizontalPadding = if (isWideScreen) 44.dp else 16.dp
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -274,28 +381,28 @@ fun Top10RankedListItem(
             .clip(RoundedCornerShape(10.dp))
             .background(NetflixDarkGray)
             .clickable { onCardClick() }
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .padding(horizontal = if (isWideScreen) 18.dp else 12.dp, vertical = if (isWideScreen) 14.dp else 10.dp)
     ) {
         // Rank Badge
         Box(
-            modifier = Modifier.width(38.dp),
+            modifier = Modifier.width(if (isWideScreen) 48.dp else 38.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = rank.toString(),
                 color = if (rank <= 3) NetflixRed else Color.White.copy(alpha = 0.85f),
-                fontSize = if (rank >= 10) 24.sp else 28.sp,
+                fontSize = if (rank >= 10) (if (isWideScreen) 28.sp else 24.sp) else (if (isWideScreen) 34.sp else 28.sp),
                 fontWeight = FontWeight.Black
             )
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         // Poster
         Box(
             modifier = Modifier
-                .width(68.dp)
-                .height(98.dp)
+                .width(if (isWideScreen) 85.dp else 68.dp)
+                .height(if (isWideScreen) 122.dp else 98.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(NetflixCard)
         ) {
@@ -309,85 +416,54 @@ fun Top10RankedListItem(
             }
         }
 
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(16.dp))
 
         // Metadata
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = movie.displayTitle,
                 color = NetflixTextPrimary,
-                fontSize = 15.sp,
+                fontSize = if (isWideScreen) 17.sp else 15.sp,
                 fontWeight = FontWeight.Bold,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 
-            if (movie.nameEn.isNotBlank() && movie.nameVi.isNotBlank() && !movie.nameEn.equals(movie.nameVi, ignoreCase = true)) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = movie.nameEn,
-                    color = NetflixTextSecondary,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
             Spacer(modifier = Modifier.height(6.dp))
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 if (movie.year > 0) {
-                    Surface(
-                        color = NetflixCard,
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = movie.year.toString(),
-                            color = NetflixTextSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                Surface(
-                    color = NetflixRed.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    val transLabel = when {
-                        movie.translation.contains("dub", ignoreCase = true) ||
-                            movie.translation.contains("voice", ignoreCase = true) -> "Thuyết minh"
-                        else -> "Vietsub"
-                    }
                     Text(
-                        text = transLabel,
-                        color = NetflixRed,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        text = movie.year.toString(),
+                        color = NetflixTextSecondary,
+                        fontSize = 13.sp
                     )
+                    Text(text = " • ", color = NetflixTextSecondary, fontSize = 13.sp)
                 }
+                Text(
+                    text = if (movie.translation == "subtitle") "Phụ đề" else "Lồng tiếng",
+                    color = NetflixRed,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
-        // Quick Play Button
+        // Play Button
         IconButton(
             onClick = onPlayClick,
             modifier = Modifier
-                .size(40.dp)
-                .background(Color.White.copy(alpha = 0.14f), CircleShape)
+                .size(if (isWideScreen) 46.dp else 40.dp)
+                .clip(CircleShape)
+                .background(Color.White)
         ) {
             Icon(
                 imageVector = Icons.Default.PlayArrow,
-                contentDescription = "Phát ngay",
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
+                contentDescription = "Phát phim",
+                tint = Color.Black,
+                modifier = Modifier.size(if (isWideScreen) 28.dp else 24.dp)
             )
         }
     }
