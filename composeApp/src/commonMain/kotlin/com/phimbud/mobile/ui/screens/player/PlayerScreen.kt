@@ -106,6 +106,7 @@ import com.phimbud.mobile.player.PlatformPlayerController
 import com.phimbud.mobile.player.PlatformPlayerShortcutEffect
 import com.phimbud.mobile.player.PlatformPlayerWindowEffect
 import com.phimbud.mobile.player.PlatformVideoSurface
+import com.phimbud.mobile.ui.components.liquidGlass
 import com.phimbud.mobile.player.PlayerShortcutAction
 import com.phimbud.mobile.player.SkipSegment
 import com.phimbud.mobile.player.SkipSegmentType
@@ -509,10 +510,8 @@ fun PlayerScreen(
         ) {
             val icon = osdIcon
             if (icon != null && osdLabel.isNotBlank()) {
-                Surface(
-                    color = NetflixDarkGray.copy(alpha = 0.88f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
-                    shape = RoundedCornerShape(24.dp)
+                Box(
+                    modifier = Modifier.liquidGlass(RoundedCornerShape(24.dp), fillAlpha = 0.22f)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -603,16 +602,15 @@ fun PlayerScreen(
                     .displayCutoutPadding()
             ) {
                 if (isLocked) {
-                    Surface(
-                        onClick = {
-                            isLocked = false
-                            controlsInteractionTick++
-                        },
-                        color = NetflixDarkGray.copy(alpha = 0.88f),
-                        shape = RoundedCornerShape(24.dp),
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(20.dp)
+                            .liquidGlass(RoundedCornerShape(24.dp), fillAlpha = 0.22f)
+                            .clickable {
+                                isLocked = false
+                                controlsInteractionTick++
+                            }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -37,3 +39,17 @@ expect fun GlassBottomNavBar(
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier
 )
+
+/**
+ * Decorative Liquid Glass surface: tinted translucent fill, specular rim highlight, soft shadow and
+ * inner glow. Safe to use anywhere (scrolling content, above video, dialogs) without backdrop wiring.
+ *
+ * @param shape the clip / outline shape.
+ * @param tint optional accent colour mixed into the fill (e.g. brand red for primary actions).
+ * @param fillAlpha opacity of the white/tint fill.
+ */
+expect fun Modifier.liquidGlass(
+    shape: Shape,
+    tint: Color = Color.Unspecified,
+    fillAlpha: Float = 0.14f
+): Modifier

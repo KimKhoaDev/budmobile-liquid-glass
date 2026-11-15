@@ -313,7 +313,7 @@ fun App(
                 route = "detail/{fid}",
                 arguments = listOf(navArgument("fid") { type = NavType.StringType })
             ) { backStackEntry ->
-                val fid = backStackEntry.arguments?.getString("fid").orEmpty()
+                val fid = backStackEntry.savedStateHandle.get<String>("fid").orEmpty()
                 val detailVm = viewModel(key = fid) { DetailViewModel(repository, fid) }
 
                 DetailScreen(
@@ -361,7 +361,7 @@ fun App(
                         onPlayerScreenActiveChanged(false)
                     }
                 }
-                val watchFid = backStackEntry.arguments?.getString("watchFid").orEmpty()
+                val watchFid = backStackEntry.savedStateHandle.get<String>("watchFid").orEmpty()
                 val playerVm = viewModel(key = watchFid) { PlayerViewModel(repository, watchFid) }
 
                 PlayerScreen(

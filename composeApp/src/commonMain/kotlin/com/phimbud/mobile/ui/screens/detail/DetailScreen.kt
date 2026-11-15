@@ -65,6 +65,7 @@ import com.phimbud.mobile.core.platform.PlatformBackHandler
 import com.phimbud.mobile.core.platform.formatOneDecimal
 import com.phimbud.mobile.core.platform.platformHorizontalDragScroll
 import com.phimbud.mobile.ui.components.MovieRow
+import com.phimbud.mobile.ui.components.liquidGlass
 import com.phimbud.mobile.ui.theme.NetflixBlack
 import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixDarkGray
@@ -210,7 +211,7 @@ fun DetailScreen(
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier
-                                            .background(NetflixCard, RoundedCornerShape(4.dp))
+                                            .liquidGlass(RoundedCornerShape(4.dp), fillAlpha = 0.16f)
                                             .padding(horizontal = 7.dp, vertical = 3.dp)
                                     ) {
                                         Icon(
@@ -237,8 +238,7 @@ fun DetailScreen(
                                     }
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(NetflixCard)
+                                            .liquidGlass(RoundedCornerShape(4.dp), fillAlpha = 0.14f)
                                             .then(
                                                 if (onFilterClick != null && yearFilterVal != null) {
                                                     Modifier.clickable {
@@ -265,8 +265,7 @@ fun DetailScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(NetflixCard)
+                                        .liquidGlass(RoundedCornerShape(4.dp), fillAlpha = 0.14f)
                                         .then(
                                             if (onFilterClick != null) {
                                                 Modifier.clickable {
@@ -289,7 +288,7 @@ fun DetailScreen(
                                 if (isShow && detail.seasons.size > 1) {
                                     Box(
                                         modifier = Modifier
-                                            .background(NetflixCard, RoundedCornerShape(4.dp))
+                                            .liquidGlass(RoundedCornerShape(4.dp), fillAlpha = 0.14f)
                                             .padding(horizontal = 7.dp, vertical = 3.dp)
                                     ) {
                                         Text(
@@ -311,14 +310,13 @@ fun DetailScreen(
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     genreItems.forEach { genreTag ->
-                                        Surface(
-                                            onClick = {
-                                                onFilterClick?.invoke(BrowseFilter(genre = genreTag.slug))
-                                            },
-                                            enabled = onFilterClick != null,
-                                            color = NetflixDarkGray,
-                                            shape = RoundedCornerShape(16.dp),
-                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                                        Box(
+                                            modifier = Modifier
+                                                .liquidGlass(RoundedCornerShape(16.dp), fillAlpha = 0.15f)
+                                                .clickable(enabled = onFilterClick != null) {
+                                                    onFilterClick?.invoke(BrowseFilter(genre = genreTag.slug))
+                                                }
+                                                .padding(horizontal = 11.dp, vertical = 5.dp)
                                         ) {
                                             Text(
                                                 text = genreTag.name,
@@ -326,8 +324,7 @@ fun DetailScreen(
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Medium,
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                     }
@@ -344,12 +341,12 @@ fun DetailScreen(
                                     Button(
                                         onClick = { viewModel.playFast(onPlayClick) },
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color.White,
-                                            contentColor = Color.Black
+                                            containerColor = Color.Transparent,
+                                            contentColor = Color.White
                                         ),
-                                        shape = RoundedCornerShape(6.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
-                                        modifier = Modifier.height(46.dp)
+                                        modifier = Modifier.height(46.dp).liquidGlass(RoundedCornerShape(8.dp), fillAlpha = 0.28f)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.PlayArrow,
@@ -371,9 +368,9 @@ fun DetailScreen(
                                         colors = ButtonDefaults.outlinedButtonColors(
                                             contentColor = Color.White
                                         ),
-                                        shape = RoundedCornerShape(6.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
-                                        modifier = Modifier.height(46.dp)
+                                        modifier = Modifier.height(46.dp).liquidGlass(RoundedCornerShape(8.dp), tint = if (state.isInWishlist) NetflixRed else Color.Unspecified, fillAlpha = 0.16f)
                                     ) {
                                         Icon(
                                             imageVector = if (state.isInWishlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -394,13 +391,14 @@ fun DetailScreen(
                                 Button(
                                     onClick = { viewModel.playFast(onPlayClick) },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color.White,
-                                        contentColor = Color.Black
+                                        containerColor = Color.Transparent,
+                                        contentColor = Color.White
                                     ),
-                                    shape = RoundedCornerShape(4.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(46.dp)
+                                        .liquidGlass(RoundedCornerShape(8.dp), fillAlpha = 0.28f)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.PlayArrow,
@@ -424,10 +422,11 @@ fun DetailScreen(
                                     colors = ButtonDefaults.outlinedButtonColors(
                                         contentColor = Color.White
                                     ),
-                                    shape = RoundedCornerShape(4.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(46.dp)
+                                        .liquidGlass(RoundedCornerShape(8.dp), tint = if (state.isInWishlist) NetflixRed else Color.Unspecified, fillAlpha = 0.16f)
                                 ) {
                                     Icon(
                                         imageVector = if (state.isInWishlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -567,8 +566,7 @@ fun EpisodeItem(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(NetflixDarkGray)
+            .liquidGlass(shape = RoundedCornerShape(8.dp), fillAlpha = 0.14f)
             .clickable { onClick() }
             .padding(8.dp)
     ) {

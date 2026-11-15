@@ -45,6 +45,7 @@ import com.phimbud.mobile.core.platform.platformHorizontalDragScroll
 import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
+import com.phimbud.mobile.ui.components.liquidGlass
 import kotlinx.coroutines.launch
 
 @Composable
@@ -162,8 +163,7 @@ fun MovieRow(
                         .align(Alignment.CenterStart)
                         .padding(start = 12.dp)
                         .size(46.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.78f))
+                        .liquidGlass(CircleShape, fillAlpha = 0.28f)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBackIos,
@@ -186,8 +186,7 @@ fun MovieRow(
                         .align(Alignment.CenterEnd)
                         .padding(end = 12.dp)
                         .size(46.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.78f))
+                        .liquidGlass(CircleShape, fillAlpha = 0.28f)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,

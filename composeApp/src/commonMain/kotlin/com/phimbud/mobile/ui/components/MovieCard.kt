@@ -37,6 +37,7 @@ import coil3.compose.AsyncImage
 import com.phimbud.mobile.core.model.Movie
 import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
+import com.phimbud.mobile.ui.components.liquidGlass
 
 @Composable
 fun MovieCard(
@@ -75,13 +76,12 @@ fun MovieCard(
             modifier = Modifier
                 .width(width)
                 .height(height)
-                .clip(RoundedCornerShape(8.dp))
+                .liquidGlass(RoundedCornerShape(8.dp), fillAlpha = if (isWideScreen && isHovered) 0.22f else 0.12f)
                 .border(
                     width = if (isWideScreen && isHovered) 1.5.dp else 0.dp,
                     color = borderColor,
                     shape = RoundedCornerShape(8.dp)
                 )
-                .background(NetflixCard)
         ) {
             if (!movie.posterUrl.isNullOrBlank()) {
                 AsyncImage(
