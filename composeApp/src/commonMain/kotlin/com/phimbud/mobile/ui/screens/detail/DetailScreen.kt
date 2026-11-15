@@ -5,9 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -95,11 +97,14 @@ fun DetailScreen(
         onBackClick()
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(NetflixBlack)
     ) {
+        val isWideScreen = maxWidth >= 720.dp
+        val horizontalMargin = if (isWideScreen) 44.dp else 16.dp
+
         when (val state = uiState) {
             is DetailUiState.Loading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -140,7 +145,7 @@ fun DetailScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(260.dp)
+                                .height(if (isWideScreen) 400.dp else 260.dp)
                         ) {
                             AsyncImage(
                                 model = detail.backdropUrl ?: detail.posterUrl,
@@ -159,7 +164,7 @@ fun DetailScreen(
                                 onClick = onBackClick,
                                 modifier = Modifier
                                     .statusBarsPadding()
-                                    .padding(16.dp)
+                                    .padding(horizontal = horizontalMargin, vertical = 16.dp)
                                     .align(Alignment.TopStart)
                             ) {
                                 Icon(
@@ -172,12 +177,12 @@ fun DetailScreen(
                     }
 
                     item(key = "detail_metadata", contentType = "metadata") {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        Column(modifier = Modifier.padding(horizontal = horizontalMargin)) {
                             Text(
                                 text = detail.displayTitle,
                                 color = NetflixTextPrimary,
-                                fontSize = 24.sp,
-                                lineHeight = 30.sp,
+                                fontSize = if (isWideScreen) 32.sp else 24.sp,
+                                lineHeight = if (isWideScreen) 38.sp else 30.sp,
                                 fontWeight = FontWeight.Bold
                             )
 
@@ -331,57 +336,113 @@ fun DetailScreen(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            Button(
-                                onClick = { viewModel.playFast(onPlayClick) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White,
-                                    contentColor = Color.Black
-                                ),
-                                shape = RoundedCornerShape(4.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(46.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "Phát",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Phát",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
+                            if (isWideScreen) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Button(
+                                        onClick = { viewModel.playFast(onPlayClick) },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color.White,
+                                            contentColor = Color.Black
+                                        ),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
+                                        modifier = Modifier.height(46.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Phát",
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Phát",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                                    OutlinedButton(
+                                        onClick = { viewModel.toggleWishlist() },
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
+                                        modifier = Modifier.height(46.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (state.isInWishlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                            contentDescription = "Danh sách",
+                                            tint = if (state.isInWishlist) NetflixRed else Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = if (state.isInWishlist) "Đã thêm vào Danh sách" else "Thêm vào Danh sách",
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            } else {
+                                Button(
+                                    onClick = { viewModel.playFast(onPlayClick) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color.White,
+                                        contentColor = Color.Black
+                                    ),
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(46.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = "Phát",
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Phát",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
 
-                            OutlinedButton(
-                                onClick = { viewModel.toggleWishlist() },
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(4.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(46.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (state.isInWishlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                    contentDescription = "Danh sách",
-                                    tint = if (state.isInWishlist) NetflixRed else Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (state.isInWishlist) "Đã thêm vào Danh sách" else "Thêm vào Danh sách",
-                                    fontSize = 14.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedButton(
+                                    onClick = { viewModel.toggleWishlist() },
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(46.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (state.isInWishlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                        contentDescription = "Danh sách",
+                                        tint = if (state.isInWishlist) NetflixRed else Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (state.isInWishlist) "Đã thêm vào Danh sách" else "Thêm vào Danh sách",
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(14.dp))
@@ -401,11 +462,11 @@ fun DetailScreen(
 
                     if (detail.seasons.isNotEmpty()) {
                         item(key = "detail_seasons_header", contentType = "seasons_header") {
-                            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalMargin)) {
                                 Text(
                                     text = "Các tập phim",
                                     color = NetflixTextPrimary,
-                                    fontSize = 18.sp,
+                                    fontSize = if (isWideScreen) 20.sp else 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
 
@@ -472,7 +533,7 @@ fun DetailScreen(
                                 EpisodeItem(
                                     episode = episode,
                                     onClick = { onPlayClick(episode.fid) },
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = horizontalMargin, vertical = 6.dp)
                                 )
                             }
                         }
@@ -484,7 +545,8 @@ fun DetailScreen(
                             MovieRow(
                                 title = "Nội dung tương tự",
                                 movies = detail.relatedTitles,
-                                onMovieClick = onRelatedMovieClick
+                                onMovieClick = onRelatedMovieClick,
+                                isWideScreen = isWideScreen
                             )
                             Spacer(modifier = Modifier.height(40.dp))
                         }

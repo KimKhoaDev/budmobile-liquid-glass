@@ -44,7 +44,6 @@ val DesktopNavItems = listOf(
     TopBarItem("shows", "Phim bộ"),
     TopBarItem("movies", "Phim lẻ"),
     TopBarItem("browse", "Khám phá"),
-    TopBarItem("search", "Tìm kiếm"),
     TopBarItem("mylist", "Của tôi")
 )
 

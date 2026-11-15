@@ -1,10 +1,19 @@
 package com.phimbud.mobile.ui.screens.mylist
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -30,10 +39,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +65,7 @@ fun MyListScreen(
     viewModel: MyListViewModel,
     onMovieClick: (Movie) -> Unit,
     onLogoutClick: () -> Unit,
+    isWideScreen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val userSession by viewModel.userSession.collectAsState()
@@ -67,7 +79,10 @@ fun MyListScreen(
             .fillMaxSize()
             .background(NetflixBlack)
             .statusBarsPadding()
-            .padding(16.dp)
+            .padding(
+                horizontal = if (isWideScreen) 44.dp else 16.dp,
+                vertical = if (isWideScreen) 18.dp else 16.dp
+            )
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -186,10 +201,12 @@ fun MyListScreen(
                 )
             }
         } else {
+            val gridSpacing = if (isWideScreen) 16.dp else 10.dp
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 115.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                columns = GridCells.Adaptive(minSize = if (isWideScreen) 165.dp else 110.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(gridSpacing),
+                horizontalArrangement = Arrangement.spacedBy(gridSpacing),
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(
@@ -197,16 +214,39 @@ fun MyListScreen(
                     key = { it.fid },
                     contentType = { "mylist_movie" }
                 ) { movie ->
+                    val interactionSource = remember { MutableInteractionSource() }
+                    val isHovered by interactionSource.collectIsHoveredAsState()
+                    val scale by animateFloatAsState(
+                        targetValue = if (isWideScreen && isHovered) 1.04f else 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                    )
+                    val borderColor by animateColorAsState(
+                        targetValue = if (isWideScreen && isHovered) Color.White.copy(alpha = 0.55f) else Color.Transparent
+                    )
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onMovieClick(movie) }
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                            .hoverable(interactionSource)
+                            .clickable(
+                                interactionSource = interactionSource,
+                                indication = null
+                            ) { onMovieClick(movie) }
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(2f / 3f)
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(if (isWideScreen) 8.dp else 6.dp))
+                                .border(
+                                    width = if (isWideScreen && isHovered) 1.5.dp else 0.dp,
+                                    color = borderColor,
+                                    shape = RoundedCornerShape(if (isWideScreen) 8.dp else 6.dp)
+                                )
                                 .background(NetflixCard)
                         ) {
                             if (!movie.posterUrl.isNullOrBlank()) {
@@ -219,14 +259,15 @@ fun MyListScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(if (isWideScreen) 6.dp else 4.dp))
 
                         Text(
                             text = movie.displayTitle,
-                            color = NetflixTextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
+                            color = if (isWideScreen && isHovered) Color.White else NetflixTextPrimary,
+                            fontSize = if (isWideScreen) 14.sp else 12.sp,
+                            fontWeight = if (isWideScreen && isHovered) FontWeight.SemiBold else FontWeight.Medium,
+                            maxLines = if (isWideScreen) 2 else 1,
+                            lineHeight = if (isWideScreen) 18.sp else 14.sp,
                             overflow = TextOverflow.Ellipsis
                         )
                     }

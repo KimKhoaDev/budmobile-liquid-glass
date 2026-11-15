@@ -184,10 +184,10 @@ compose.desktop {
         )
 
         nativeDistributions {
-            outputBaseDir.set(project.layout.buildDirectory.dir("release-windows-v1.1.9"))
+            outputBaseDir.set(project.layout.buildDirectory.dir("release-windows-v1.1.7"))
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
             packageName = "PhimBud"
-            packageVersion = "1.1.9"
+            packageVersion = "1.1.7"
             description = "PhimBud Windows App"
             vendor = "PhimBud"
             modules(

@@ -31,6 +31,7 @@ import coil3.memory.MemoryCache
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.crossfade
 import com.phimbud.mobile.core.model.BrowseFilter
+import com.phimbud.mobile.core.model.HomeFilterMode
 import com.phimbud.mobile.core.platform.PlatformBackHandler
 import com.phimbud.mobile.core.platform.configurePlatformImageLoader
 import com.phimbud.mobile.core.platform.platformImageCacheDirectory
@@ -115,6 +116,7 @@ fun App(
             composable("main") {
                 var currentTab by rememberSaveable { mutableStateOf("home") }
                 val saveableStateHolder = rememberSaveableStateHolder()
+                val homeVm = viewModel { HomeViewModel(repository) }
                 val browseVm = viewModel { BrowseViewModel(repository) }
                 val myListVm = viewModel { MyListViewModel(repository) }
 
@@ -156,6 +158,10 @@ fun App(
                                     currentRoute = activeTopRoute,
                                     onNavigate = { route ->
                                         when (route) {
+                                            "home" -> {
+                                                homeVm.selectFilterMode(HomeFilterMode.ALL)
+                                                currentTab = "home"
+                                            }
                                             "shows" -> {
                                                 browseVm.updateType("show")
                                                 currentTab = "browse"
@@ -174,6 +180,7 @@ fun App(
                                         }
                                     },
                                     onLogoutClick = {
+                                        myListVm.logout()
                                         navController.navigate("login") {
                                             popUpTo("main") { inclusive = true }
                                             launchSingleTop = true
@@ -186,7 +193,12 @@ fun App(
                             if (!isWideScreen) {
                                 BottomNavBar(
                                     currentRoute = currentTab,
-                                    onNavigate = { currentTab = it }
+                                    onNavigate = { route ->
+                                        if (route == "home" && currentTab == "home") {
+                                            homeVm.selectFilterMode(HomeFilterMode.ALL)
+                                        }
+                                        currentTab = route
+                                    }
                                 )
                             }
                         },
@@ -196,7 +208,6 @@ fun App(
                             saveableStateHolder.SaveableStateProvider(currentTab) {
                                 when (currentTab) {
                                     "home" -> {
-                                        val homeVm = viewModel { HomeViewModel(repository) }
                                         HomeScreen(
                                             viewModel = homeVm,
                                             onMovieClick = { movie ->
@@ -233,7 +244,8 @@ fun App(
                                             navController.navigate("detail/${movie.fid}") {
                                                 launchSingleTop = true
                                             }
-                                        }
+                                        },
+                                        isWideScreen = isWideScreen
                                     )
                                 }
                                 "search" -> {
@@ -244,7 +256,8 @@ fun App(
                                             navController.navigate("detail/$fid") {
                                                 launchSingleTop = true
                                             }
-                                        }
+                                        },
+                                        isWideScreen = isWideScreen
                                     )
                                 }
                                 "mylist" -> {
@@ -263,7 +276,8 @@ fun App(
                                                 popUpTo("main") { inclusive = true }
                                                 launchSingleTop = true
                                             }
-                                        }
+                                        },
+                                        isWideScreen = isWideScreen
                                     )
                                 }
                             }

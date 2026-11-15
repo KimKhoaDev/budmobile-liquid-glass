@@ -1,9 +1,11 @@
 package com.phimbud.mobile.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.hoverable
@@ -239,6 +241,9 @@ fun Top10PosterCard(
         targetValue = if (isWideScreen && isHovered) 1.05f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
     )
+    val borderColor by animateColorAsState(
+        targetValue = if (isWideScreen && isHovered) Color.White.copy(alpha = 0.55f) else Color.Transparent
+    )
 
     Column(
         modifier = modifier
@@ -303,6 +308,11 @@ fun Top10PosterCard(
                     .height(posterHeight)
                     .align(Alignment.TopEnd)
                     .clip(RoundedCornerShape(8.dp))
+                    .border(
+                        width = if (isWideScreen && isHovered) 1.5.dp else 0.dp,
+                        color = borderColor,
+                        shape = RoundedCornerShape(8.dp)
+                    )
                     .background(NetflixCard)
             ) {
                 if (!movie.posterUrl.isNullOrBlank()) {
@@ -372,15 +382,28 @@ fun Top10RankedListItem(
     isWideScreen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val horizontalPadding = if (isWideScreen) 44.dp else 16.dp
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val borderColor by animateColorAsState(
+        targetValue = if (isWideScreen && isHovered) Color.White.copy(alpha = 0.35f) else Color.Transparent
+    )
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
+            .border(
+                width = if (isWideScreen && isHovered) 1.dp else 0.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(10.dp)
+            )
             .background(NetflixDarkGray)
-            .clickable { onCardClick() }
+            .hoverable(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) { onCardClick() }
             .padding(horizontal = if (isWideScreen) 18.dp else 12.dp, vertical = if (isWideScreen) 14.dp else 10.dp)
     ) {
         // Rank Badge
@@ -428,6 +451,17 @@ fun Top10RankedListItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+
+            if (movie.nameEn.isNotBlank() && movie.nameVi.isNotBlank() && !movie.nameEn.equals(movie.nameVi, ignoreCase = true)) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = movie.nameEn,
+                    color = NetflixTextSecondary,
+                    fontSize = if (isWideScreen) 13.sp else 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
             Spacer(modifier = Modifier.height(6.dp))
 
