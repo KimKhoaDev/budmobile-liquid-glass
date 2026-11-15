@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.phimbud.mobile.core.model.SearchItem
+import com.phimbud.mobile.ui.components.LocalBottomOverlayInset
 import com.phimbud.mobile.ui.theme.NetflixBlack
 import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixDarkGray
@@ -137,7 +138,7 @@ fun SearchScreen(
             val gridSpacing = if (isWideScreen) 16.dp else 10.dp
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = if (isWideScreen) 165.dp else 110.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                contentPadding = PaddingValues(bottom = 24.dp + LocalBottomOverlayInset.current),
                 verticalArrangement = Arrangement.spacedBy(gridSpacing),
                 horizontalArrangement = Arrangement.spacedBy(gridSpacing),
                 modifier = Modifier.fillMaxSize()

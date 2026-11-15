@@ -82,6 +82,7 @@ import com.phimbud.mobile.core.model.BrowseFilterOptions
 import com.phimbud.mobile.core.model.FilterOption
 import com.phimbud.mobile.core.model.Movie
 import com.phimbud.mobile.core.platform.formatOneDecimal
+import com.phimbud.mobile.ui.components.LocalBottomOverlayInset
 import com.phimbud.mobile.ui.theme.NetflixBlack
 import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixDarkGray
@@ -287,7 +288,7 @@ fun BrowseScreen(
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = if (isWideScreen) 165.dp else 110.dp),
             state = gridState,
-            contentPadding = PaddingValues(bottom = 24.dp),
+            contentPadding = PaddingValues(bottom = 24.dp + LocalBottomOverlayInset.current),
             verticalArrangement = Arrangement.spacedBy(gridSpacing),
             horizontalArrangement = Arrangement.spacedBy(gridSpacing),
             modifier = Modifier.fillMaxSize()

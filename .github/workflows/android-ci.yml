@@ -1,0 +1,84 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - v*
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: "recursive"
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17' # Thay đổi thành 11 hoặc 21 nếu dự án của bạn yêu cầu khác
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        run: ./gradlew :composeApp:assembleDebug
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: composeApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  build-windows:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: "recursive"
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure WiX Toolset (needed for .exe / .msi installers)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue) -and -not (Test-Path "$env:WIX\bin\candle.exe")) {
+            choco install wixtoolset -y --no-progress
+          }
+
+      - name: Build Windows installers with Gradle
+        shell: bash
+        run: ./gradlew :composeApp:packageExe :composeApp:packageMsi
+
+      - name: Upload Windows Installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: phimbud-windows-installers
+          path: |
+            composeApp/build/release-windows-*/main/exe/*.exe
+            composeApp/build/release-windows-*/main/msi/*.msi
+          if-no-files-found: error

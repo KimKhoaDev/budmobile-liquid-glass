@@ -54,9 +54,9 @@ kotlin {
             implementation(compose.ui)
             implementation(compose.components.resources)
 
-            implementation("org.jetbrains.androidx.navigation:navigation-compose:2.8.0-alpha10")
-            implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
-            implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.3")
+            implementation("org.jetbrains.androidx.navigation:navigation-compose:2.9.1")
+            implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
+            implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
 
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
@@ -83,6 +83,9 @@ kotlin {
             implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
             implementation("androidx.media3:media3-datasource-okhttp:$media3Version")
             implementation("androidx.media3:media3-ui:$media3Version")
+
+            // Liquid Glass (https://github.com/Kyant0/AndroidLiquidGlass) - Android only
+            implementation("io.github.kyant0:backdrop:1.0.0")
         }
 
         val androidUnitTest by getting {
@@ -121,7 +124,7 @@ kotlin {
 
 android {
     namespace = "com.phimbud.mobile"
-    compileSdk = 34
+    compileSdk = 36
 
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     sourceSets["main"].res.srcDirs("src/androidMain/res")

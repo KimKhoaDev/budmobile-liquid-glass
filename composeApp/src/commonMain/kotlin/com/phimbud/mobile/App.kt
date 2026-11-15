@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -43,7 +45,11 @@ import com.phimbud.mobile.core.platform.PlatformBackHandler
 import com.phimbud.mobile.core.platform.configurePlatformImageLoader
 import com.phimbud.mobile.core.platform.platformImageCacheDirectory
 import com.phimbud.mobile.core.repository.PhimBudRepository
-import com.phimbud.mobile.ui.components.BottomNavBar
+import com.phimbud.mobile.ui.components.GlassBottomBarInset
+import com.phimbud.mobile.ui.components.GlassBottomNavBar
+import com.phimbud.mobile.ui.components.LocalBottomOverlayInset
+import com.phimbud.mobile.ui.components.glassBackdropSource
+import com.phimbud.mobile.ui.components.rememberGlassBackdropState
 import com.phimbud.mobile.ui.components.TopNavBar
 import com.phimbud.mobile.ui.screens.browse.BrowseScreen
 import com.phimbud.mobile.ui.screens.browse.BrowseViewModel
@@ -160,6 +166,10 @@ fun App(
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     val isWideScreen = maxWidth >= 720.dp
 
+                    val glassState = rememberGlassBackdropState()
+                    CompositionLocalProvider(
+                        LocalBottomOverlayInset provides (if (isWideScreen) 0.dp else GlassBottomBarInset)
+                    ) {
                     Scaffold(
                         topBar = {
                             if (isWideScreen) {
@@ -198,22 +208,9 @@ fun App(
                                 )
                             }
                         },
-                        bottomBar = {
-                            if (!isWideScreen) {
-                                BottomNavBar(
-                                    currentRoute = currentTab,
-                                    onNavigate = { route ->
-                                        if (route == "home" && currentTab == "home") {
-                                            homeVm.selectFilterMode(HomeFilterMode.ALL)
-                                        }
-                                        currentTab = route
-                                    }
-                                )
-                            }
-                        },
                         containerColor = NetflixBlack
                     ) { innerPadding ->
-                        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                        Box(modifier = Modifier.padding(innerPadding).fillMaxSize().glassBackdropSource(glassState)) {
                             saveableStateHolder.SaveableStateProvider(currentTab) {
                                 when (currentTab) {
                                     "home" -> {
@@ -293,6 +290,22 @@ fun App(
                         }
                     }
                 }
+                    }
+
+                    if (!isWideScreen) {
+                        GlassBottomNavBar(
+                            state = glassState,
+                            currentRoute = currentTab,
+                            onNavigate = { route ->
+                                        if (route == "home" && currentTab == "home") {
+                                            homeVm.selectFilterMode(HomeFilterMode.ALL)
+                                        }
+                                        currentTab = route
+                            },
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                        )
+                    }
+
             }
             }
 

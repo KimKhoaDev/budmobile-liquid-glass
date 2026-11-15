@@ -12,6 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +55,7 @@ import com.phimbud.mobile.ui.components.HeroBanner
 import com.phimbud.mobile.ui.components.MovieRow
 import com.phimbud.mobile.ui.components.Top10MovieRow
 import com.phimbud.mobile.ui.components.Top10RankedListItem
+import com.phimbud.mobile.ui.components.LocalBottomOverlayInset
 import com.phimbud.mobile.ui.theme.NetflixBlack
 import com.phimbud.mobile.ui.theme.NetflixCard
 import com.phimbud.mobile.ui.theme.NetflixRed
@@ -124,7 +126,8 @@ fun HomeScreen(
                     val heroMovie = feed.trending.firstOrNull() ?: feed.movies.firstOrNull()
 
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = LocalBottomOverlayInset.current)
                     ) {
                         if (heroMovie != null) {
                             item(key = "hero_banner", contentType = "hero") {
@@ -300,7 +303,8 @@ fun HomeScreen(
                         val top1Movie = activeList.first()
 
                         LazyColumn(
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = LocalBottomOverlayInset.current)
                         ) {
                             item(key = "top10_hero_${top1Movie.fid}", contentType = "hero") {
                                 HeroBanner(
