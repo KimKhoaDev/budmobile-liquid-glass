@@ -85,7 +85,8 @@ kotlin {
             implementation("androidx.media3:media3-ui:$media3Version")
 
             // Liquid Glass (https://github.com/Kyant0/AndroidLiquidGlass) - Android only
-            implementation("io.github.kyant0:backdrop:1.0.0")
+            implementation("io.github.kyant0:backdrop:1.0.6")
+            implementation("io.github.kyant0:shapes:1.2.0") // Capsule() shape used by the glass components
         }
 
         val androidUnitTest by getting {
