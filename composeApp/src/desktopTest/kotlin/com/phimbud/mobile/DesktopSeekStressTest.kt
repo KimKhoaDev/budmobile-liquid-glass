@@ -303,4 +303,55 @@ class DesktopSeekStressTest {
             h.close()
         }
     }
+
+    @Test
+    fun slowNetworkLookaheadPrefetchesDeeplyAndStreamsInFlightSegmentWithoutRedownload() {
+        val h = createHarness(slow = true, seconds = 40)
+        try {
+            h.player.openStream(h.playlistUrl, 0L, true)
+            assertTrue(waitForFrames(h, 5, 20_000), "Expected initial frames on slow network")
+            h.player.pause()
+
+            // Wait while paused so the proxy prefetches multiple segments (> 2) sequentially on slow network
+            val waitEnd = System.currentTimeMillis() + 8_000L
+            while (System.currentTimeMillis() < waitEnd) {
+                if (h.upstreamSegmentRequests.size >= 4) break
+                Thread.sleep(50)
+            }
+            assertTrue(
+                h.upstreamSegmentRequests.size >= 4,
+                "Expected lookahead prefetch to fetch >= 4 segments while paused, got ${h.upstreamSegmentRequests.keys}"
+            )
+
+            // Seek to 12.0s (seg003.ts, which is either already cached or currently in-flight prefetching)
+            val beforeCount = h.events.size
+            val seekStartMs = System.currentTimeMillis()
+            doSeek(h, 12_000L)
+
+            var renderedPtsMs = -1L
+            val deadline = System.currentTimeMillis() + 6_000L
+            while (System.currentTimeMillis() < deadline) {
+                val postSeekFrames = h.events.drop(beforeCount).filterIsInstance<Event.Frame>()
+                if (postSeekFrames.isNotEmpty()) {
+                    renderedPtsMs = postSeekFrames.last().ptsUs / 1000L
+                    break
+                }
+                Thread.sleep(20)
+            }
+            val elapsedSeekMs = System.currentTimeMillis() - seekStartMs
+            assertNull(h.error.get(), "Unexpected playback error: ${h.error.get()}")
+            assertTrue(renderedPtsMs >= 11_930L, "Expected post-seek frame >= 11930ms, got ${renderedPtsMs}ms")
+
+            // Verify seg000..seg003 were each requested at most once (zero cancelled/wasted re-downloads!)
+            for (segName in listOf("seg000.ts", "seg001.ts", "seg002.ts", "seg003.ts")) {
+                val count = h.upstreamSegmentRequests[segName]?.get() ?: 0
+                assertTrue(
+                    count == 1,
+                    "Expected $segName to be downloaded exactly once without cancellation/redownload, got $count (seek latency=${elapsedSeekMs}ms)"
+                )
+            }
+        } finally {
+            h.close()
+        }
+    }
 }
