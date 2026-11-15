@@ -42,6 +42,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
@@ -130,6 +132,8 @@ import kotlin.math.roundToInt
 fun PlayerScreen(
     viewModel: PlayerViewModel,
     onBackClick: () -> Unit,
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -858,6 +862,8 @@ fun PlayerScreen(
                         nextTitleFid = resolvedNextEpisodeFid,
                         hasEpisodesList = hasEpisodesList,
                         skipSegments = readyState?.skipSegments ?: emptyList(),
+                        isFullscreen = isFullscreen,
+                        onToggleFullscreen = onToggleFullscreen,
                         onScrubActivity = { controlsInteractionTick++ },
                         onOpenEpisodesClick = {
                             controlsInteractionTick++
@@ -1666,6 +1672,8 @@ private fun PlayerBottomBar(
     nextTitleFid: String?,
     hasEpisodesList: Boolean,
     skipSegments: List<SkipSegment>,
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null,
     onScrubActivity: () -> Unit,
     onOpenEpisodesClick: () -> Unit,
     onNextEpisodeClick: (String) -> Unit,
@@ -1814,6 +1822,33 @@ private fun PlayerBottomBar(
                                 text = "Tập tiếp theo",
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+
+                if (onToggleFullscreen != null) {
+                    Surface(
+                        onClick = onToggleFullscreen,
+                        color = Color.White.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                contentDescription = if (isFullscreen) "Thu nhỏ về cửa sổ" else "Toàn màn hình",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isFullscreen) "Thu nhỏ" else "Toàn màn hình",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp
                             )
                         }

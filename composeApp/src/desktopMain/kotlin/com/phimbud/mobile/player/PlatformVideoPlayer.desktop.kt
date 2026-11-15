@@ -1,5 +1,7 @@
 package com.phimbud.mobile.player
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -282,9 +284,8 @@ actual fun PlatformPlayerWindowEffect(
     val currentOnMouseActivity by rememberUpdatedState(onUserMouseActivity)
     var mouseMoveTick by remember { mutableIntStateOf(0) }
 
-    // Ensure Fullscreen on enter & clean restore on exit, plus wake mouse cursor and HUD on mouse motion
+    // Manage mouse activity, clean cursor restore on exit, and auto-hide cursor when Fullscreen
     DisposableEffect(winController) {
-        winController.setPlayerFullscreen(true)
         var lastWakeMs = 0L
         var lastX = -1
         var lastY = -1
@@ -310,13 +311,15 @@ actual fun PlatformPlayerWindowEffect(
         onDispose {
             Toolkit.getDefaultToolkit().removeAWTEventListener(awtListener)
             winController.setCursorHidden(false)
-            winController.setPlayerFullscreen(false)
+            if (winController.isFullscreen) {
+                winController.exitFullscreen()
+            }
         }
     }
 
-    // Auto-hide cursor in Fullscreen when HUD controls are hidden and mouse is idle for 2.5s
-    LaunchedEffect(controlsVisible, showSubtitleDialog, showServerDialog, mouseMoveTick) {
-        if (controlsVisible || showSubtitleDialog || showServerDialog) {
+    // Auto-hide cursor only when in Fullscreen and HUD controls are hidden and mouse is idle for 2.5s
+    LaunchedEffect(controlsVisible, showSubtitleDialog, showServerDialog, mouseMoveTick, winController.isFullscreen) {
+        if (!winController.isFullscreen || controlsVisible || showSubtitleDialog || showServerDialog) {
             winController.setCursorHidden(false)
         } else {
             delay(2500L)
@@ -374,12 +377,6 @@ actual fun PlatformVideoSurface(
 ) {
     val desktopController = controller as DesktopPlayerController
 
-    val scale = when (resizeMode) {
-        VideoResizeMode.FIT -> ContentScale.Fit
-        VideoResizeMode.ZOOM -> ContentScale.Crop
-        VideoResizeMode.FILL -> ContentScale.FillBounds
-    }
-
     val parsedCues by produceState(
         initialValue = emptyList<SubtitleCue>(),
         key1 = activeSubtitle?.path,
@@ -398,7 +395,7 @@ actual fun PlatformVideoSurface(
     Box(modifier = modifier.background(Color.Black)) {
         DesktopVideoFrame(
             desktopController = desktopController,
-            scale = scale,
+            resizeMode = resizeMode,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -417,12 +414,36 @@ actual fun PlatformVideoSurface(
     }
 }
 
+private fun VideoResizeMode.toContentScale(): ContentScale = when (this) {
+    VideoResizeMode.FIT -> ContentScale.Fit
+    VideoResizeMode.ZOOM -> ContentScale.Crop
+    VideoResizeMode.FILL -> ContentScale.FillBounds
+}
+
 @Composable
 private fun DesktopVideoFrame(
     desktopController: DesktopPlayerController,
-    scale: ContentScale,
+    resizeMode: VideoResizeMode,
     modifier: Modifier = Modifier
 ) {
+    var previousMode by remember { mutableStateOf(resizeMode) }
+    var currentMode by remember { mutableStateOf(resizeMode) }
+    val animProgress = remember { Animatable(1f) }
+
+    LaunchedEffect(resizeMode) {
+        if (resizeMode != currentMode) {
+            previousMode = currentMode
+            currentMode = resizeMode
+            animProgress.snapTo(0f)
+            animProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+            )
+        }
+    }
+
+    val progress = animProgress.value
+
     // Read frameTick and currentFrame strictly inside Canvas's DrawScope so Compose skips
     // 100% of Composition and Layout phases on every video frame (only GPU Draw phase runs).
     Canvas(modifier = modifier) {
@@ -435,9 +456,14 @@ private fun DesktopVideoFrame(
             val canvasH = size.height
             if (srcW > 0 && srcH > 0 && canvasW > 0f && canvasH > 0f) {
                 val srcSize = Size(srcW.toFloat(), srcH.toFloat())
-                val factor = scale.computeScaleFactor(srcSize, size)
-                val dstW = (srcSize.width * factor.scaleX).roundToInt().coerceAtLeast(1)
-                val dstH = (srcSize.height * factor.scaleY).roundToInt().coerceAtLeast(1)
+                val scalePrev = previousMode.toContentScale().computeScaleFactor(srcSize, size)
+                val scaleCurr = currentMode.toContentScale().computeScaleFactor(srcSize, size)
+
+                val scaleX = if (progress >= 1f) scaleCurr.scaleX else scalePrev.scaleX + (scaleCurr.scaleX - scalePrev.scaleX) * progress
+                val scaleY = if (progress >= 1f) scaleCurr.scaleY else scalePrev.scaleY + (scaleCurr.scaleY - scalePrev.scaleY) * progress
+
+                val dstW = (srcSize.width * scaleX).roundToInt().coerceAtLeast(1)
+                val dstH = (srcSize.height * scaleY).roundToInt().coerceAtLeast(1)
                 val dstX = ((canvasW - dstW) * 0.5f).roundToInt()
                 val dstY = ((canvasH - dstH) * 0.5f).roundToInt()
                 clipRect {

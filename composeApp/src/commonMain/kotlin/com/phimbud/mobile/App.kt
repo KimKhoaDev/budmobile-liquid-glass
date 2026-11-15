@@ -1,5 +1,12 @@
 package com.phimbud.mobile
 
+import androidx.compose.animation.core.EaseInCubic
+import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -59,7 +66,9 @@ import okio.FileSystem
 @Composable
 fun App(
     repository: PhimBudRepository,
-    onPlayerScreenActiveChanged: (Boolean) -> Unit = {}
+    onPlayerScreenActiveChanged: (Boolean) -> Unit = {},
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: () -> Unit = {}
 ) {
     setSingletonImageLoaderFactory { context ->
         configurePlatformImageLoader(
@@ -316,7 +325,22 @@ fun App(
 
             composable(
                 route = "player/{watchFid}",
-                arguments = listOf(navArgument("watchFid") { type = NavType.StringType })
+                arguments = listOf(navArgument("watchFid") { type = NavType.StringType }),
+                enterTransition = {
+                    fadeIn(animationSpec = tween(280, easing = EaseOutCubic)) +
+                        scaleIn(initialScale = 0.95f, animationSpec = tween(280, easing = EaseOutCubic))
+                },
+                exitTransition = {
+                    fadeOut(animationSpec = tween(200, easing = EaseInCubic)) +
+                        scaleOut(targetScale = 0.95f, animationSpec = tween(200, easing = EaseInCubic))
+                },
+                popEnterTransition = {
+                    fadeIn(animationSpec = tween(200, easing = EaseOutCubic))
+                },
+                popExitTransition = {
+                    fadeOut(animationSpec = tween(220, easing = EaseInCubic)) +
+                        scaleOut(targetScale = 0.95f, animationSpec = tween(220, easing = EaseInCubic))
+                }
             ) { backStackEntry ->
                 DisposableEffect(Unit) {
                     onPlayerScreenActiveChanged(true)
@@ -329,7 +353,9 @@ fun App(
 
                 PlayerScreen(
                     viewModel = playerVm,
-                    onBackClick = { navController.popBackStack() }
+                    onBackClick = { navController.popBackStack() },
+                    isFullscreen = isFullscreen,
+                    onToggleFullscreen = onToggleFullscreen
                 )
             }
         }

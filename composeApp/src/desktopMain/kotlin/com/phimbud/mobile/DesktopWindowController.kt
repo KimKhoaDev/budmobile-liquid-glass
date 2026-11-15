@@ -1,6 +1,9 @@
 package com.phimbud.mobile
 
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -18,10 +21,12 @@ class DesktopWindowController(
 ) {
     var awtWindow: ComposeWindow? = null
 
+    var isFullscreen: Boolean by mutableStateOf(windowState.placement == WindowPlacement.Fullscreen)
+        private set
+
     private var savedPlacement: WindowPlacement = WindowPlacement.Floating
     private var savedSize: DpSize = DpSize(1200.dp, 750.dp)
     private var savedPosition: WindowPosition = WindowPosition.PlatformDefault
-    private var inPlayerMode: Boolean = false
     private var cursorCurrentlyHidden: Boolean = false
 
     private val invisibleCursor: Cursor by lazy {
@@ -29,57 +34,48 @@ class DesktopWindowController(
         Toolkit.getDefaultToolkit().createCustomCursor(blankImg, Point(0, 0), "phimbud_blank_cursor")
     }
 
-    fun setPlayerFullscreen(active: Boolean) {
-        if (active) {
-            if (!inPlayerMode) {
-                inPlayerMode = true
-                savedPlacement = windowState.placement
-                if (windowState.placement == WindowPlacement.Floating) {
-                    savedSize = windowState.size
-                    savedPosition = windowState.position
-                }
-            }
-            if (windowState.placement != WindowPlacement.Fullscreen) {
-                windowState.placement = WindowPlacement.Fullscreen
-            }
-        } else {
-            setCursorHidden(false)
-            if (inPlayerMode) {
-                inPlayerMode = false
-                restoreWindowFromFullscreen()
-            }
-        }
+    fun syncPlacement() {
+        isFullscreen = (windowState.placement == WindowPlacement.Fullscreen)
     }
 
     fun toggleFullscreen() {
         if (windowState.placement == WindowPlacement.Fullscreen) {
-            setCursorHidden(false)
-            restoreWindowFromFullscreen()
+            exitFullscreen()
         } else {
-            if (windowState.placement == WindowPlacement.Floating) {
-                savedSize = windowState.size
-                savedPosition = windowState.position
-                savedPlacement = WindowPlacement.Floating
-            } else if (windowState.placement == WindowPlacement.Maximized) {
-                savedPlacement = WindowPlacement.Maximized
-            }
-            windowState.placement = WindowPlacement.Fullscreen
+            enterFullscreen()
         }
     }
 
-    private fun restoreWindowFromFullscreen() {
+    fun enterFullscreen() {
         if (windowState.placement == WindowPlacement.Fullscreen) {
+            isFullscreen = true
+            return
+        }
+        savedPlacement = windowState.placement
+        if (windowState.placement == WindowPlacement.Floating) {
+            savedSize = windowState.size
+            savedPosition = windowState.position
+        }
+        windowState.placement = WindowPlacement.Fullscreen
+        isFullscreen = true
+    }
+
+    fun exitFullscreen() {
+        if (windowState.placement != WindowPlacement.Fullscreen) {
+            isFullscreen = false
+            return
+        }
+        setCursorHidden(false)
+        if (savedPlacement == WindowPlacement.Maximized) {
+            windowState.placement = WindowPlacement.Maximized
+        } else {
             windowState.placement = WindowPlacement.Floating
             windowState.size = savedSize
             if (savedPosition is WindowPosition.Absolute) {
                 windowState.position = savedPosition
             }
-            if (savedPlacement == WindowPlacement.Maximized) {
-                SwingUtilities.invokeLater {
-                    windowState.placement = WindowPlacement.Maximized
-                }
-            }
         }
+        isFullscreen = false
     }
 
     fun setCursorHidden(hidden: Boolean) {

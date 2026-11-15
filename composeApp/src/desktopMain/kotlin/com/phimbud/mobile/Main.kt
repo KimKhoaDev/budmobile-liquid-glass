@@ -54,7 +54,13 @@ fun main() = application {
         resizable = true,
         onPreviewKeyEvent = { event ->
             if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                backDispatcher.dispatchBack()
+                if (windowController.isFullscreen) {
+                    windowController.exitFullscreen()
+                    true
+                } else {
+                    backDispatcher.dispatchBack()
+                    true
+                }
             } else {
                 keyDispatcher.dispatchKeyEvent(event)
             }
@@ -91,9 +97,9 @@ fun main() = application {
         ) {
             App(
                 repository = repository,
-                onPlayerScreenActiveChanged = { active ->
-                    windowController.setPlayerFullscreen(active)
-                }
+                onPlayerScreenActiveChanged = { /* User controls fullscreen explicitly */ },
+                isFullscreen = windowController.isFullscreen,
+                onToggleFullscreen = { windowController.toggleFullscreen() }
             )
         }
     }
