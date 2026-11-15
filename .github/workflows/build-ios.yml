@@ -1,10 +1,6 @@
 name: Build PhimBud Release (iOS IPA)
 
 on:
-  push:
-    branches:
-      - main
-      - master
   workflow_dispatch:
     inputs:
       runner:
