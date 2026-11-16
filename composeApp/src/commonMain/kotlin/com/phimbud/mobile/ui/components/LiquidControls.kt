@@ -5,7 +5,16 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import com.phimbud.mobile.ui.settings.LocalGlassSettings
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -31,6 +40,7 @@ import kotlinx.coroutines.launch
  * Place it BEFORE [liquidGlass] so the glass scales together with the content.
  */
 fun Modifier.liquidPress(pressedScale: Float = 1.07f): Modifier = composed {
+    val physics = LocalGlassSettings.current.pressPhysics
     val scale = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
     this
@@ -38,7 +48,8 @@ fun Modifier.liquidPress(pressedScale: Float = 1.07f): Modifier = composed {
             scaleX = scale.value
             scaleY = scale.value
         }
-        .pointerInput(pressedScale) {
+        .pointerInput(pressedScale, physics) {
+            if (!physics) return@pointerInput
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 scope.launch { scale.animateTo(pressedScale, spring(dampingRatio = 0.55f, stiffness = 700f)) }
@@ -76,4 +87,57 @@ fun LiquidSliderThumb(
             }
             .liquidGlass(CircleShape, tint = Color.White, fillAlpha = 0.22f)
     )
+}
+
+/**
+ * Liquid glass switch: the thumb stretches while pressed and slides with an under-damped spring,
+ * the track fills with [accent] when on.
+ */
+@Composable
+fun LiquidToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    accent: Color = LocalGlassSettings.current.accent.color
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val trackWidth = 58.dp
+    val trackHeight = 34.dp
+    val inset = 3.dp
+    val thumbWidth by animateDpAsState(
+        targetValue = if (pressed) 38.dp else 28.dp,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 500f),
+        label = "toggleThumbWidth"
+    )
+    val thumbX by animateDpAsState(
+        targetValue = if (checked) trackWidth - inset - thumbWidth else inset,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 450f),
+        label = "toggleThumbX"
+    )
+    val trackColor by animateColorAsState(
+        targetValue = if (checked) accent.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.18f),
+        label = "toggleTrackColor"
+    )
+    Box(
+        modifier = modifier
+            .size(trackWidth, trackHeight)
+            .background(trackColor, RoundedCornerShape(50))
+            .liquidGlass(RoundedCornerShape(50), fillAlpha = 0.06f)
+            .toggleable(
+                value = checked,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Switch,
+                onValueChange = onCheckedChange
+            ),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            Modifier
+                .offset(x = thumbX)
+                .size(thumbWidth, trackHeight - inset * 2)
+                .liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.24f)
+        )
+    }
 }

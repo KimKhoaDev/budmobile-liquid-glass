@@ -48,7 +48,7 @@ expect fun GlassBottomNavBar(
  * @param tint optional accent colour mixed into the fill (e.g. brand red for primary actions).
  * @param fillAlpha opacity of the white/tint fill.
  */
-expect fun Modifier.liquidGlass(
+expect fun Modifier.platformLiquidGlass(
     shape: Shape,
     tint: Color = Color.Unspecified,
     fillAlpha: Float = 0.14f

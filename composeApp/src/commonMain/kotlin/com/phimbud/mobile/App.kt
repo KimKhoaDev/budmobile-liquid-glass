@@ -1,5 +1,9 @@
 package com.phimbud.mobile
 
+import com.phimbud.mobile.ui.screens.settings.SettingsScreen
+import com.phimbud.mobile.ui.settings.GlassSettingsController
+import com.phimbud.mobile.ui.settings.LocalGlassSettings
+import com.phimbud.mobile.ui.settings.LocalGlassSettingsController
 import androidx.compose.animation.core.EaseInCubic
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.tween
@@ -105,11 +109,16 @@ fun App(
     }
 
     PhimBudTheme {
+        val glassController = remember { GlassSettingsController(repository.platformContext) }
         val navController = rememberNavController()
         val isLoggedIn by repository.isLoggedIn.collectAsState()
         val startDestination = remember { if (repository.isLoggedIn.value) "main" else "login" }
         var pendingBrowseFilter by remember { mutableStateOf<BrowseFilter?>(null) }
 
+        CompositionLocalProvider(
+            LocalGlassSettings provides glassController.settings,
+            LocalGlassSettingsController provides glassController
+        ) {
         NavHost(
             navController = navController,
             startDestination = startDestination,
@@ -272,6 +281,9 @@ fun App(
                                     }
                                     MyListScreen(
                                         viewModel = myListVm,
+                                        onSettingsClick = {
+                                            navController.navigate("settings") { launchSingleTop = true }
+                                        },
                                         onMovieClick = { movie ->
                                             navController.navigate("detail/${movie.fid}") {
                                                 launchSingleTop = true
@@ -307,6 +319,10 @@ fun App(
                     }
 
             }
+            }
+
+            composable("settings") {
+                SettingsScreen(onBackClick = { navController.popBackStack() })
             }
 
             composable(
@@ -371,6 +387,8 @@ fun App(
                     onToggleFullscreen = onToggleFullscreen
                 )
             }
+        }
+
         }
 
         LaunchedEffect(isLoggedIn) {

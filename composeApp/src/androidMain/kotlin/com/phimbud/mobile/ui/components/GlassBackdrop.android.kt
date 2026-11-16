@@ -39,6 +39,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.phimbud.mobile.ui.components.glass.LiquidBottomTab
 import com.phimbud.mobile.ui.components.glass.LiquidBottomTabs
+import com.phimbud.mobile.ui.settings.LocalGlassSettings
 import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 
@@ -61,6 +62,7 @@ actual fun GlassBottomNavBar(
     onNavigate: (String) -> Unit,
     modifier: Modifier
 ) {
+    val glass = LocalGlassSettings.current
     val items = NavItem.entries
     val selectedIndex = items.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
 
@@ -85,7 +87,9 @@ actual fun GlassBottomNavBar(
             },
             backdrop = state.backdrop,
             tabsCount = items.size,
-            accentColor = NetflixRed
+            accentColor = glass.accent.color,
+            refraction = glass.refraction && glass.enabled,
+            intensity = if (glass.enabled) glass.intensity else 2.2f
         ) {
             items.forEach { item ->
                 LiquidBottomTab(onClick = { onNavigateState.value(item.route) }) {
@@ -108,7 +112,7 @@ actual fun GlassBottomNavBar(
     }
 }
 
-actual fun Modifier.liquidGlass(shape: Shape, tint: Color, fillAlpha: Float): Modifier =
+actual fun Modifier.platformLiquidGlass(shape: Shape, tint: Color, fillAlpha: Float): Modifier =
     this.drawBackdrop(
         backdrop = emptyBackdrop(),
         shape = { shape },
@@ -132,6 +136,7 @@ actual fun LiquidGlassIconButton(
     modifier: Modifier,
     content: @Composable () -> Unit
 ) {
+    val glass = LocalGlassSettings.current
     val animationScope = rememberCoroutineScope()
     val interactiveHighlight = remember(animationScope) { InteractiveHighlight(animationScope = animationScope) }
     Box(
@@ -142,7 +147,7 @@ actual fun LiquidGlassIconButton(
                 effects = {
                     vibrancy()
                     blur(2f.dp.toPx())
-                    lens(12f.dp.toPx(), 24f.dp.toPx())
+                    if (glass.refraction && glass.enabled) lens(12f.dp.toPx(), 24f.dp.toPx())
                 },
                 layerBlock = {
                     // Inflate while pressed, following the finger slightly like the library demo.

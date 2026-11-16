@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +68,7 @@ fun MyListScreen(
     viewModel: MyListViewModel,
     onMovieClick: (Movie) -> Unit,
     onLogoutClick: () -> Unit,
+    onSettingsClick: () -> Unit = {},
     isWideScreen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -142,6 +144,14 @@ fun MyListScreen(
                     text = userSession.userEmail.ifBlank { "Đã kết nối" },
                     color = NetflixTextSecondary,
                     fontSize = 13.sp
+                )
+            }
+
+            IconButton(onClick = onSettingsClick) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Cài đặt giao diện",
+                    tint = NetflixTextSecondary
                 )
             }
 
