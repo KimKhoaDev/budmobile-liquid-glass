@@ -180,7 +180,7 @@ fun Top10MovieRow(
                         .align(Alignment.CenterStart)
                         .padding(start = 12.dp)
                         .size(46.dp)
-                        .liquidGlass(CircleShape, fillAlpha = 0.18f)
+                        .liquidPress().liquidGlass(CircleShape, fillAlpha = 0.18f)
                         .clip(CircleShape)
                 ) {
                     Icon(
@@ -204,7 +204,7 @@ fun Top10MovieRow(
                         .align(Alignment.CenterEnd)
                         .padding(end = 12.dp)
                         .size(46.dp)
-                        .liquidGlass(CircleShape, fillAlpha = 0.18f)
+                        .liquidPress().liquidGlass(CircleShape, fillAlpha = 0.18f)
                         .clip(CircleShape)
                 ) {
                     Icon(
@@ -393,7 +393,7 @@ fun Top10RankedListItem(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .liquidGlass(RoundedCornerShape(18.dp), fillAlpha = 0.08f)
+            .liquidPress().liquidGlass(RoundedCornerShape(18.dp), fillAlpha = 0.08f)
             .clip(RoundedCornerShape(18.dp))
             .border(
                 width = if (isWideScreen && isHovered) 1.dp else 0.dp,

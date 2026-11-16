@@ -4,6 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.border
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,3 +51,21 @@ actual fun Modifier.liquidGlass(shape: Shape, tint: Color, fillAlpha: Float): Mo
             ),
             shape = shape
         )
+
+@Composable
+actual fun LiquidGlassIconButton(
+    state: GlassBackdropState,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .liquidPress()
+            .liquidGlass(CircleShape, fillAlpha = 0.16f)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { content() }
+}

@@ -53,3 +53,16 @@ expect fun Modifier.liquidGlass(
     tint: Color = Color.Unspecified,
     fillAlpha: Float = 0.14f
 ): Modifier
+
+/**
+ * Round icon button that refracts whatever [state]'s backdrop source draws behind it (Android),
+ * with spring press physics. Must be placed OUTSIDE the node marked with [glassBackdropSource].
+ * Other platforms render a regular glass circle.
+ */
+@Composable
+expect fun LiquidGlassIconButton(
+    state: GlassBackdropState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+)

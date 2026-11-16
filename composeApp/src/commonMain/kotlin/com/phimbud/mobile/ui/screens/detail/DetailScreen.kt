@@ -1,5 +1,9 @@
 package com.phimbud.mobile.ui.screens.detail
 
+import com.phimbud.mobile.ui.components.LiquidGlassIconButton
+import com.phimbud.mobile.ui.components.glassBackdropSource
+import com.phimbud.mobile.ui.components.rememberGlassBackdropState
+import com.phimbud.mobile.ui.components.liquidPress
 import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -124,7 +128,7 @@ fun DetailScreen(
                     Button(
                         onClick = { viewModel.loadDetail() },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
+                        modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                     ) {
                         Text("Thử lại")
                     }
@@ -143,7 +147,10 @@ fun DetailScreen(
                     }
                 }
 
-                LazyColumn(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
+                val glassState = rememberGlassBackdropState()
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().navigationBarsPadding().glassBackdropSource(glassState)
+                ) {
                     item(key = "detail_backdrop", contentType = "backdrop") {
                         Box(
                             modifier = Modifier
@@ -163,20 +170,6 @@ fun DetailScreen(
                                     .background(DetailBackdropGradient)
                             )
 
-                            IconButton(
-                                onClick = onBackClick,
-                                modifier = Modifier
-                                    .statusBarsPadding()
-                                    .padding(horizontal = horizontalMargin, vertical = 16.dp)
-                                    .align(Alignment.TopStart)
-                                    .liquidGlass(CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Quay lại",
-                                    tint = Color.White
-                                )
-                            }
                         }
                     }
 
@@ -322,7 +315,7 @@ fun DetailScreen(
                                             enabled = onFilterClick != null,
                                             color = Color.Transparent,
                                             shape = RoundedCornerShape(50),
-                                            modifier = Modifier.liquidGlass(RoundedCornerShape(50), fillAlpha = 0.12f)
+                                            modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), fillAlpha = 0.12f)
                                         ) {
                                             Text(
                                                 text = genreTag.name,
@@ -354,7 +347,7 @@ fun DetailScreen(
                                         shape = RoundedCornerShape(50),
                                         contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
                                         modifier = Modifier.height(46.dp)
-                                            .liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
+                                            .liquidPress().liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.PlayArrow,
@@ -380,7 +373,7 @@ fun DetailScreen(
                                         shape = RoundedCornerShape(50),
                                         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
                                         modifier = Modifier.height(46.dp)
-                                            .liquidGlass(RoundedCornerShape(50))
+                                            .liquidPress().liquidGlass(RoundedCornerShape(50))
                                     ) {
                                         Icon(
                                             imageVector = if (state.isInWishlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -408,7 +401,7 @@ fun DetailScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(46.dp)
-                                        .liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
+                                        .liquidPress().liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.PlayArrow,
@@ -437,7 +430,7 @@ fun DetailScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(46.dp)
-                                        .liquidGlass(RoundedCornerShape(50))
+                                        .liquidPress().liquidGlass(RoundedCornerShape(50))
                                 ) {
                                     Icon(
                                         imageVector = if (state.isInWishlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -507,7 +500,7 @@ fun DetailScreen(
                                                 },
                                                 shape = RoundedCornerShape(50),
                                                 border = null,
-                                                modifier = Modifier.liquidGlass(
+                                                modifier = Modifier.liquidPress().liquidGlass(
                                                     RoundedCornerShape(50),
                                                     tint = if (isSelected) NetflixRed else Color.Unspecified,
                                                     fillAlpha = if (isSelected) 0.22f else 0.12f
@@ -569,6 +562,22 @@ fun DetailScreen(
                         }
                     }
                 }
+
+                // Pinned over the scrolling content so it genuinely refracts the backdrop/poster.
+                LiquidGlassIconButton(
+                    state = glassState,
+                    onClick = onBackClick,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(horizontal = horizontalMargin, vertical = 16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Quay lại",
+                        tint = Color.White
+                    )
+                }
             }
         }
     }
@@ -584,7 +593,7 @@ fun EpisodeItem(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .liquidGlass(RoundedCornerShape(18.dp), fillAlpha = 0.08f)
+            .liquidPress().liquidGlass(RoundedCornerShape(18.dp), fillAlpha = 0.08f)
             .clip(RoundedCornerShape(18.dp))
             .clickable { onClick() }
             .padding(8.dp)

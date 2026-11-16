@@ -1,5 +1,7 @@
 package com.phimbud.mobile.ui.screens.player
 
+import com.phimbud.mobile.ui.components.LiquidSliderThumb
+import com.phimbud.mobile.ui.components.liquidPress
 import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -614,7 +616,7 @@ fun PlayerScreen(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(20.dp)
-                            .liquidGlass(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.14f)
+                            .liquidPress().liquidGlass(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.14f)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -651,7 +653,7 @@ fun PlayerScreen(
                         ) {
                             IconButton(
                                 onClick = onBackClick,
-                                modifier = Modifier.liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                modifier = Modifier.liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -767,7 +769,7 @@ fun PlayerScreen(
 
                             IconButton(
                                 onClick = { isLocked = true },
-                                modifier = Modifier.liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                modifier = Modifier.liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.LockOpen,
@@ -793,7 +795,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(54.dp)
-                                .liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                .liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Replay10,
@@ -812,7 +814,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(68.dp)
-                                .liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                .liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
                         ) {
                             Icon(
                                 imageVector = if (controller.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -832,7 +834,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(54.dp)
-                                .liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                .liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Forward10,
@@ -1859,6 +1861,7 @@ private fun PlayerBottomBar(
             }
         }
 
+        val seekInteraction = remember { MutableInteractionSource() }
         Slider(
             value = if (duration > 0L) (currentPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f,
             onValueChange = { frac ->
@@ -1876,6 +1879,8 @@ private fun PlayerBottomBar(
                 activeTrackColor = NetflixRed,
                 inactiveTrackColor = Color.Gray.copy(alpha = 0.5f)
             ),
+            interactionSource = seekInteraction,
+            thumb = { LiquidSliderThumb(seekInteraction) },
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -2121,6 +2126,7 @@ private fun SubtitleStyleCustomizerSection(
                 }
             }
 
+            val marginInteraction = remember { MutableInteractionSource() }
             Slider(
                 value = prefs.bottomMarginPercent,
                 onValueChange = { newVal ->
@@ -2132,6 +2138,8 @@ private fun SubtitleStyleCustomizerSection(
                     activeTrackColor = NetflixRed,
                     inactiveTrackColor = Color.Gray.copy(alpha = 0.4f)
                 ),
+                interactionSource = marginInteraction,
+                thumb = { LiquidSliderThumb(marginInteraction) },
                 modifier = Modifier.fillMaxWidth()
             )
 

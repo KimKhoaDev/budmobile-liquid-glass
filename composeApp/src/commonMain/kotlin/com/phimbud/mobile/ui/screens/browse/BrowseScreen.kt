@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.browse
 
+import com.phimbud.mobile.ui.components.liquidPress
 import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -226,7 +227,7 @@ fun BrowseScreen(
                     },
                     color = Color.Transparent,
                     shape = RoundedCornerShape(50),
-                    modifier = Modifier.liquidGlass(
+                    modifier = Modifier.liquidPress().liquidGlass(
                         RoundedCornerShape(50),
                         tint = if (filter.isActive) NetflixRed else Color.Unspecified,
                         fillAlpha = if (filter.isActive) 0.2f else if (isPanelCurrentlyVisible) 0.18f else 0.12f
@@ -356,7 +357,7 @@ fun BrowseScreen(
                             onClick = { viewModel.retry() },
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
+                            modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                         ) {
                             Text("Thử lại", maxLines = 1, softWrap = false)
                         }
@@ -386,7 +387,7 @@ fun BrowseScreen(
                                 onClick = { viewModel.resetFilter() },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                                 shape = RoundedCornerShape(50),
-                                modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
+                                modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                             ) {
                                 Text("Đặt lại bộ lọc", maxLines = 1, softWrap = false)
                             }
@@ -571,7 +572,7 @@ private fun RemovableFilterChip(
         onClick = onRemove,
         color = Color.Transparent,
         shape = RoundedCornerShape(50),
-        modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.16f)
+        modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.16f)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -755,7 +756,7 @@ private fun FilterDropdown(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(38.dp)
-                    .liquidGlass(
+                    .liquidPress().liquidGlass(
                         RoundedCornerShape(14.dp),
                         tint = if (enabled && !isDefault) NetflixRed else Color.Unspecified,
                         fillAlpha = if (!enabled) 0.05f else if (!isDefault) 0.16f else 0.11f

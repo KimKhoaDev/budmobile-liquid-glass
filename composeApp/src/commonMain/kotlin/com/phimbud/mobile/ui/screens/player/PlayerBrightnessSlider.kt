@@ -1,5 +1,10 @@
 package com.phimbud.mobile.ui.screens.player
 
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateDpAsState
 import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -64,6 +69,12 @@ fun PlayerBrightnessBar(
     val clampedBrightness = brightness.coerceIn(0.01f, 1.0f)
     val percentText = "${(clampedBrightness * 100).roundToInt()}%"
     val icon = brightnessIconForLevel(clampedBrightness)
+    var dragging by remember { mutableStateOf(false) }
+    val trackWidth by animateDpAsState(
+        targetValue = if (dragging) 16.dp else 8.dp,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
+        label = "brightnessTrackWidth"
+    )
 
     Surface(
         color = Color.Transparent,
@@ -92,13 +103,16 @@ fun PlayerBrightnessBar(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .width(8.dp)
+                    .width(trackWidth)
                     .liquidGlass(CircleShape, fillAlpha = 0.16f)
                     .clip(CircleShape)
                     .then(
                         if (currentOnBrightnessChanged != null) {
                             Modifier.pointerInput(Unit) {
                                 detectVerticalDragGestures(
+                                    onDragStart = { dragging = true },
+                                    onDragEnd = { dragging = false },
+                                    onDragCancel = { dragging = false },
                                     onVerticalDrag = { change, dragAmount ->
                                         change.consume()
                                         val delta = -dragAmount / size.height.toFloat()

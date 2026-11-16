@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.home
 
+import com.phimbud.mobile.ui.components.liquidPress
 import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -115,7 +116,7 @@ fun HomeScreen(
                     Button(
                         onClick = { viewModel.loadHomeFeed() },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
+                        modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                     ) {
                         Text("Thử lại")
                     }
@@ -297,7 +298,7 @@ fun HomeScreen(
                             Button(
                                 onClick = { viewModel.loadTop10(forceRefresh = true) },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                                modifier = Modifier.liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
+                                modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                             ) {
                                 Text("Tải lại")
                             }
@@ -532,7 +533,7 @@ private fun NetflixFilterPill(
         onClick = onClick,
         color = Color.Transparent,
         shape = RoundedCornerShape(50),
-        modifier = Modifier.liquidGlass(
+        modifier = Modifier.liquidPress().liquidGlass(
             RoundedCornerShape(50),
             tint = if (selected) NetflixRed else Color.Unspecified,
             fillAlpha = if (selected) 0.22f else 0.12f
@@ -560,7 +561,7 @@ private fun NetflixCategoryChip(
         onClick = onClick,
         color = Color.Transparent,
         shape = RoundedCornerShape(50),
-        modifier = Modifier.liquidGlass(
+        modifier = Modifier.liquidPress().liquidGlass(
             RoundedCornerShape(50),
             tint = if (selected) Color.White else Color.Unspecified,
             fillAlpha = if (selected) 0.23f else 0.12f

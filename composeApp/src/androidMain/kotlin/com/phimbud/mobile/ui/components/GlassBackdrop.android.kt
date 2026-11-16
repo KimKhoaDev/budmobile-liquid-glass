@@ -1,6 +1,17 @@
 package com.phimbud.mobile.ui.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.util.lerp
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.phimbud.mobile.ui.components.glass.InteractiveHighlight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -113,3 +124,41 @@ actual fun Modifier.liquidGlass(shape: Shape, tint: Color, fillAlpha: Float): Mo
             }
         }
     )
+
+@Composable
+actual fun LiquidGlassIconButton(
+    state: GlassBackdropState,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    content: @Composable () -> Unit
+) {
+    val animationScope = rememberCoroutineScope()
+    val interactiveHighlight = remember(animationScope) { InteractiveHighlight(animationScope = animationScope) }
+    Box(
+        modifier = modifier
+            .drawBackdrop(
+                backdrop = state.backdrop,
+                shape = { CircleShape },
+                effects = {
+                    vibrancy()
+                    blur(2f.dp.toPx())
+                    lens(12f.dp.toPx(), 24f.dp.toPx())
+                },
+                layerBlock = {
+                    // Inflate while pressed, following the finger slightly like the library demo.
+                    val progress = interactiveHighlight.pressProgress
+                    val scale = lerp(1f, 1f + 6f.dp.toPx() / size.height, progress)
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = interactiveHighlight.offset.x * 0.05f
+                    translationY = interactiveHighlight.offset.y * 0.05f
+                },
+                onDrawSurface = { drawRect(Color.Black.copy(alpha = 0.18f)) }
+            )
+            .clickable(interactionSource = null, indication = null, role = Role.Button, onClick = onClick)
+            .then(interactiveHighlight.modifier)
+            .then(interactiveHighlight.gestureModifier)
+            .size(44.dp),
+        contentAlignment = Alignment.Center
+    ) { content() }
+}

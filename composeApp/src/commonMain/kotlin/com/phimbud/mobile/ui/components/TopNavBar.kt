@@ -97,7 +97,7 @@ fun TopNavBar(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .then(
-                                if (selected) Modifier.liquidGlass(RoundedCornerShape(50), fillAlpha = 0.14f)
+                                if (selected) Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), fillAlpha = 0.14f)
                                 else Modifier
                             )
                             .clip(RoundedCornerShape(50))
@@ -131,7 +131,7 @@ fun TopNavBar(
             // Search Quick Button
             IconButton(
                 onClick = { onNavigate("search") },
-                modifier = Modifier.size(38.dp).liquidGlass(CircleShape)
+                modifier = Modifier.size(38.dp).liquidPress().liquidGlass(CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Search,
@@ -147,7 +147,7 @@ fun TopNavBar(
             if (onLogoutClick != null) {
                 IconButton(
                     onClick = onLogoutClick,
-                    modifier = Modifier.size(38.dp).liquidGlass(CircleShape)
+                    modifier = Modifier.size(38.dp).liquidPress().liquidGlass(CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Logout,

@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.login
 
+import com.phimbud.mobile.ui.components.liquidPress
 import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -172,7 +173,7 @@ fun LoginScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
-                    .liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
+                    .liquidPress().liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
             ) {
                 if (uiState is LoginUiState.Loading) {
                     CircularProgressIndicator(
