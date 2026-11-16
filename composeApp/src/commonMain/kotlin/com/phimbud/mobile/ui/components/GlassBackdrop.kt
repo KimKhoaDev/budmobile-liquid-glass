@@ -51,7 +51,9 @@ expect fun GlassBottomNavBar(
 expect fun Modifier.platformLiquidGlass(
     shape: Shape,
     tint: Color = Color.Unspecified,
-    fillAlpha: Float = 0.14f
+    fillAlpha: Float = 0.14f,
+    /** Adds press physics: inflate, finger-following drift and a touch-tracking light (Android). */
+    interactive: Boolean = false
 ): Modifier
 
 /**

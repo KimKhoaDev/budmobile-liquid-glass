@@ -2,6 +2,7 @@ package com.phimbud.mobile.ui.screens.player
 
 import com.phimbud.mobile.ui.components.LiquidSliderThumb
 import com.phimbud.mobile.ui.components.liquidPress
+import com.phimbud.mobile.ui.components.liquidGlassPress
 import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -616,7 +617,7 @@ fun PlayerScreen(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(20.dp)
-                            .liquidPress().liquidGlass(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.14f)
+                            .liquidGlassPress(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.14f)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -653,7 +654,7 @@ fun PlayerScreen(
                         ) {
                             IconButton(
                                 onClick = onBackClick,
-                                modifier = Modifier.liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                modifier = Modifier.liquidGlassPress(CircleShape, fillAlpha = 0.16f)
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -769,7 +770,7 @@ fun PlayerScreen(
 
                             IconButton(
                                 onClick = { isLocked = true },
-                                modifier = Modifier.liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                modifier = Modifier.liquidGlassPress(CircleShape, fillAlpha = 0.16f)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.LockOpen,
@@ -795,7 +796,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(54.dp)
-                                .liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                .liquidGlassPress(CircleShape, fillAlpha = 0.16f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Replay10,
@@ -814,7 +815,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(68.dp)
-                                .liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                .liquidGlassPress(CircleShape, fillAlpha = 0.16f)
                         ) {
                             Icon(
                                 imageVector = if (controller.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -834,7 +835,7 @@ fun PlayerScreen(
                             },
                             modifier = Modifier
                                 .size(54.dp)
-                                .liquidPress().liquidGlass(CircleShape, fillAlpha = 0.16f)
+                                .liquidGlassPress(CircleShape, fillAlpha = 0.16f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Forward10,

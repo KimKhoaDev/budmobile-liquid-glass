@@ -23,7 +23,10 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
 import com.kyant.backdrop.backdrops.emptyBackdrop
@@ -112,20 +115,62 @@ actual fun GlassBottomNavBar(
     }
 }
 
-actual fun Modifier.platformLiquidGlass(shape: Shape, tint: Color, fillAlpha: Float): Modifier =
+actual fun Modifier.platformLiquidGlass(
+    shape: Shape,
+    tint: Color,
+    fillAlpha: Float,
+    interactive: Boolean
+): Modifier =
+    if (!interactive) {
+        this.glassBody(shape, tint, fillAlpha, null)
+    } else {
+        // Same physics as the library demo / our back button: the glass inflates, drifts a little
+        // towards the finger and a soft light follows the touch (clipped to the shape by drawBackdrop).
+        this.composed {
+            val scope = rememberCoroutineScope()
+            val highlight = remember(scope) { InteractiveHighlight(scope) }
+            Modifier
+                .glassBody(shape, tint, fillAlpha) {
+                    val progress = highlight.pressProgress
+                    if (progress > 0f) {
+                        val grow = 6f.dp.toPx() * progress
+                        scaleX = 1f + grow / size.width
+                        scaleY = 1f + grow / size.height
+                        translationX = highlight.offset.x.coerceIn(-size.width / 2f, size.width / 2f) * 0.05f
+                        translationY = highlight.offset.y.coerceIn(-size.height / 2f, size.height / 2f) * 0.05f
+                    }
+                }
+                .then(highlight.modifier)
+                .then(highlight.gestureModifier)
+        }
+    }
+
+private fun Modifier.glassBody(
+    shape: Shape,
+    tint: Color,
+    fillAlpha: Float,
+    layerBlock: (GraphicsLayerScope.() -> Unit)?
+): Modifier =
     this.drawBackdrop(
         backdrop = emptyBackdrop(),
         shape = { shape },
         effects = {},
-        highlight = { Highlight.Default.copy(alpha = 0.9f) },
-        shadow = { Shadow(radius = 10.dp, color = Color.Black.copy(alpha = 0.35f)) },
-        innerShadow = { InnerShadow(radius = 6.dp, color = Color.White.copy(alpha = 0.18f)) },
+        highlight = { Highlight.Default.copy(width = 1f.dp, alpha = 1f) },
+        shadow = { Shadow(radius = 14.dp, color = Color.Black.copy(alpha = 0.4f)) },
+        innerShadow = { InnerShadow(radius = 10.dp, color = Color.White.copy(alpha = 0.16f)) },
+        layerBlock = layerBlock,
         onDrawSurface = {
             if (tint.isSpecified) {
-                drawRect(tint.copy(alpha = (fillAlpha * 4f).coerceAtMost(0.85f)))
+                drawRect(tint.copy(alpha = (fillAlpha * 4f).coerceAtMost(0.92f)))
             } else {
                 drawRect(Color.White.copy(alpha = fillAlpha))
             }
+            // Top sheen: a soft vertical light falloff gives the surface its "wet glass" depth.
+            drawRect(
+                Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = if (tint.isSpecified) 0.12f else 0.16f), Color.Transparent)
+                )
+            )
         }
     )
 

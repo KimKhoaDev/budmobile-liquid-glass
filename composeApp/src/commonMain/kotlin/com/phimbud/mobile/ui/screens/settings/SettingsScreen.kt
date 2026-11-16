@@ -42,7 +42,9 @@ import com.phimbud.mobile.core.platform.PlatformBackHandler
 import com.phimbud.mobile.ui.components.LiquidSliderThumb
 import com.phimbud.mobile.ui.components.LiquidToggle
 import com.phimbud.mobile.ui.components.liquidGlass
+import com.phimbud.mobile.ui.components.liquidGlassPress
 import com.phimbud.mobile.ui.components.liquidPress
+import com.phimbud.mobile.ui.components.liquidGlassPress
 import com.phimbud.mobile.ui.settings.GlassAccent
 import com.phimbud.mobile.ui.settings.GlassSettings
 import com.phimbud.mobile.ui.settings.LocalGlassSettings
@@ -75,7 +77,7 @@ fun SettingsScreen(
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = onBackClick,
-                modifier = Modifier.liquidPress().liquidGlass(CircleShape)
+                modifier = Modifier.liquidGlassPress(CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -179,8 +181,7 @@ fun SettingsScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .liquidPress()
-                .liquidGlass(RoundedCornerShape(50), fillAlpha = 0.12f)
+                .liquidGlassPress(RoundedCornerShape(50), fillAlpha = 0.12f)
                 .clip(RoundedCornerShape(50))
                 .clickable { controller.reset() }
                 .padding(vertical = 14.dp),
@@ -221,8 +222,7 @@ private fun GlassPreview(settings: GlassSettings) {
         ) {
             Box(
                 Modifier
-                    .liquidPress()
-                    .liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
+                    .liquidGlassPress(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
                     .clip(RoundedCornerShape(50))
                     .clickable { }
                     .padding(horizontal = 22.dp, vertical = 11.dp)
@@ -231,8 +231,7 @@ private fun GlassPreview(settings: GlassSettings) {
             }
             Box(
                 Modifier
-                    .liquidPress()
-                    .liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
+                    .liquidGlassPress(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                     .clip(RoundedCornerShape(50))
                     .clickable { }
                     .padding(horizontal = 18.dp, vertical = 11.dp)
@@ -241,8 +240,7 @@ private fun GlassPreview(settings: GlassSettings) {
             }
             Box(
                 Modifier
-                    .liquidPress()
-                    .liquidGlass(CircleShape)
+                    .liquidGlassPress(CircleShape)
                     .clip(CircleShape)
                     .clickable { }
                     .size(44.dp),

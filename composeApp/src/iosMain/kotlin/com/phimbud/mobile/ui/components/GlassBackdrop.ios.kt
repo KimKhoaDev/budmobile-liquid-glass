@@ -37,8 +37,14 @@ actual fun GlassBottomNavBar(
 }
 
 /** Non-Android fallback: translucent fill with a soft white rim, approximating the glass look. */
-actual fun Modifier.platformLiquidGlass(shape: Shape, tint: Color, fillAlpha: Float): Modifier =
+actual fun Modifier.platformLiquidGlass(
+    shape: Shape,
+    tint: Color,
+    fillAlpha: Float,
+    interactive: Boolean
+): Modifier =
     this
+        .then(if (interactive) Modifier.liquidPress() else Modifier)
         .clip(shape)
         .background(
             if (tint.isSpecified) tint.copy(alpha = (fillAlpha * 4f).coerceAtMost(0.85f))

@@ -4,6 +4,7 @@ import com.phimbud.mobile.ui.components.LiquidGlassIconButton
 import com.phimbud.mobile.ui.components.glassBackdropSource
 import com.phimbud.mobile.ui.components.rememberGlassBackdropState
 import com.phimbud.mobile.ui.components.liquidPress
+import com.phimbud.mobile.ui.components.liquidGlassPress
 import com.phimbud.mobile.ui.components.liquidGlass
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -128,7 +129,7 @@ fun DetailScreen(
                     Button(
                         onClick = { viewModel.loadDetail() },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
+                        modifier = Modifier.liquidGlassPress(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
                     ) {
                         Text("Thử lại")
                     }
@@ -234,8 +235,8 @@ fun DetailScreen(
                                     }
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(NetflixCard)
+                                            .liquidGlassPress(RoundedCornerShape(50), fillAlpha = 0.12f)
+                                            .clip(RoundedCornerShape(50))
                                             .then(
                                                 if (onFilterClick != null && yearFilterVal != null) {
                                                     Modifier.clickable {
@@ -243,7 +244,7 @@ fun DetailScreen(
                                                     }
                                                 } else Modifier
                                             )
-                                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
                                     ) {
                                         Text(
                                             text = detail.year.toString(),
@@ -262,8 +263,8 @@ fun DetailScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(NetflixCard)
+                                        .liquidGlassPress(RoundedCornerShape(50), fillAlpha = 0.12f)
+                                        .clip(RoundedCornerShape(50))
                                         .then(
                                             if (onFilterClick != null) {
                                                 Modifier.clickable {
@@ -271,7 +272,7 @@ fun DetailScreen(
                                                 }
                                             } else Modifier
                                         )
-                                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
                                     Text(
                                         text = typeLabel,
@@ -315,7 +316,7 @@ fun DetailScreen(
                                             enabled = onFilterClick != null,
                                             color = Color.Transparent,
                                             shape = RoundedCornerShape(50),
-                                            modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), fillAlpha = 0.12f)
+                                            modifier = Modifier.liquidGlassPress(RoundedCornerShape(50), fillAlpha = 0.12f)
                                         ) {
                                             Text(
                                                 text = genreTag.name,
@@ -347,7 +348,7 @@ fun DetailScreen(
                                         shape = RoundedCornerShape(50),
                                         contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
                                         modifier = Modifier.height(46.dp)
-                                            .liquidPress().liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
+                                            .liquidGlassPress(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.PlayArrow,
@@ -373,7 +374,7 @@ fun DetailScreen(
                                         shape = RoundedCornerShape(50),
                                         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
                                         modifier = Modifier.height(46.dp)
-                                            .liquidPress().liquidGlass(RoundedCornerShape(50))
+                                            .liquidGlassPress(RoundedCornerShape(50))
                                     ) {
                                         Icon(
                                             imageVector = if (state.isInWishlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -401,7 +402,7 @@ fun DetailScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(46.dp)
-                                        .liquidPress().liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
+                                        .liquidGlassPress(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.PlayArrow,
@@ -430,7 +431,7 @@ fun DetailScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(46.dp)
-                                        .liquidPress().liquidGlass(RoundedCornerShape(50))
+                                        .liquidGlassPress(RoundedCornerShape(50))
                                 ) {
                                     Icon(
                                         imageVector = if (state.isInWishlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -500,7 +501,7 @@ fun DetailScreen(
                                                 },
                                                 shape = RoundedCornerShape(50),
                                                 border = null,
-                                                modifier = Modifier.liquidPress().liquidGlass(
+                                                modifier = Modifier.liquidGlassPress(
                                                     RoundedCornerShape(50),
                                                     tint = if (isSelected) NetflixRed else Color.Unspecified,
                                                     fillAlpha = if (isSelected) 0.22f else 0.12f
@@ -593,7 +594,7 @@ fun EpisodeItem(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .liquidPress().liquidGlass(RoundedCornerShape(18.dp), fillAlpha = 0.08f)
+            .liquidGlassPress(RoundedCornerShape(18.dp), fillAlpha = 0.08f)
             .clip(RoundedCornerShape(18.dp))
             .clickable { onClick() }
             .padding(8.dp)

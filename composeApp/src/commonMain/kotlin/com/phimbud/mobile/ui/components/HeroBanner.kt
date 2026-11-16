@@ -216,7 +216,7 @@ fun HeroBanner(
                         ),
                         shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 26.dp, vertical = 12.dp),
-                        modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
+                        modifier = Modifier.liquidGlassPress(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
@@ -241,7 +241,7 @@ fun HeroBanner(
                         ),
                         shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
-                        modifier = Modifier.liquidPress().liquidGlass(RoundedCornerShape(50))
+                        modifier = Modifier.liquidGlassPress(RoundedCornerShape(50))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Info,
@@ -344,7 +344,7 @@ fun HeroBanner(
                         shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
-                            .liquidPress().liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
+                            .liquidGlassPress(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.23f)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
@@ -368,7 +368,7 @@ fun HeroBanner(
                         shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                         modifier = Modifier.weight(1f).padding(start = 8.dp)
-                            .liquidPress().liquidGlass(RoundedCornerShape(50))
+                            .liquidGlassPress(RoundedCornerShape(50))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Info,

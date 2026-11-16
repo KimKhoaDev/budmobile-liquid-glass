@@ -19,14 +19,32 @@ fun Modifier.liquidGlass(
     shape: Shape,
     tint: Color = Color.Unspecified,
     fillAlpha: Float = 0.14f
+): Modifier = settingsAwareGlass(shape, tint, fillAlpha, interactive = false)
+
+/**
+ * Same as [liquidGlass] plus press physics (inflate, finger-following drift and touch light).
+ * Use it on anything tappable instead of combining [liquidPress] with [liquidGlass].
+ */
+fun Modifier.liquidGlassPress(
+    shape: Shape,
+    tint: Color = Color.Unspecified,
+    fillAlpha: Float = 0.14f
+): Modifier = settingsAwareGlass(shape, tint, fillAlpha, interactive = true)
+
+private fun Modifier.settingsAwareGlass(
+    shape: Shape,
+    tint: Color,
+    fillAlpha: Float,
+    interactive: Boolean
 ): Modifier = composed {
     val settings = LocalGlassSettings.current
     val effectiveTint = if (tint == NetflixRed) settings.accent.color else tint
     val alpha = (fillAlpha * settings.intensity).coerceIn(0f, 0.5f)
     val enabled = settings.enabled
-    remember(shape, effectiveTint, alpha, enabled) {
+    val physics = settings.pressPhysics
+    remember(shape, effectiveTint, alpha, enabled, interactive, physics) {
         if (enabled) {
-            Modifier.platformLiquidGlass(shape, effectiveTint, alpha)
+            Modifier.platformLiquidGlass(shape, effectiveTint, alpha, interactive && physics)
         } else {
             // Flat fallback: plain translucent fill, no rim / shadow / glow.
             Modifier.background(

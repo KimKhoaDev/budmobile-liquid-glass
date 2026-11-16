@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.components
 
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -75,11 +76,18 @@ fun MovieCard(
             modifier = Modifier
                 .width(width)
                 .height(height)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .border(
                     width = if (isWideScreen && isHovered) 1.5.dp else 0.dp,
                     color = borderColor,
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .border(
+                    width = 0.75.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.04f))
+                    ),
+                    shape = RoundedCornerShape(16.dp)
                 )
                 .background(NetflixCard)
         ) {
