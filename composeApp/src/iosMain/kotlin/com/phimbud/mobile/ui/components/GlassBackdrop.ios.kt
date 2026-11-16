@@ -11,6 +11,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.border
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -74,4 +77,24 @@ actual fun LiquidGlassIconButton(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) { content() }
+}
+
+@Composable
+actual fun ProgressiveTopBlur(
+    state: GlassBackdropState,
+    height: Dp,
+    modifier: Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.92f),
+                    0.55f to Color.Black.copy(alpha = 0.55f),
+                    1f to Color.Transparent
+                )
+            )
+    )
 }

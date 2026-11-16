@@ -68,3 +68,16 @@ expect fun LiquidGlassIconButton(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 )
+
+/**
+ * Progressive blur + scrim for the top of a scrolling screen. Content scrolling under it is
+ * blurred strongly at the very top and fades to sharp towards the bottom edge (Android renders
+ * three stacked real backdrop blurs; other platforms fall back to a gradient scrim).
+ * Place it as a sibling ABOVE the node marked with [glassBackdropSource] and BELOW the header.
+ */
+@Composable
+expect fun ProgressiveTopBlur(
+    state: GlassBackdropState,
+    height: Dp,
+    modifier: Modifier = Modifier
+)

@@ -94,7 +94,7 @@ fun App(
             }
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.25)
+                    .maxSizePercent(context, 0.30)
                     .build()
             }
             .diskCache {
@@ -122,7 +122,12 @@ fun App(
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.fillMaxSize().background(NetflixBlack)
+            modifier = Modifier.fillMaxSize().background(NetflixBlack),
+            // The Navigation default is a 700ms cross-fade, which reads as lag. Keep it short.
+            enterTransition = { fadeIn(tween(200, easing = EaseOutCubic)) },
+            exitTransition = { fadeOut(tween(140)) },
+            popEnterTransition = { fadeIn(tween(200, easing = EaseOutCubic)) },
+            popExitTransition = { fadeOut(tween(140)) }
         ) {
             composable("login") {
                 val loginVm = viewModel { LoginViewModel(repository) }

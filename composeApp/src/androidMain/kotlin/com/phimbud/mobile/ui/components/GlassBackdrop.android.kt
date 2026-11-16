@@ -23,6 +23,14 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -211,4 +219,60 @@ actual fun LiquidGlassIconButton(
             .size(44.dp),
         contentAlignment = Alignment.Center
     ) { content() }
+}
+
+@Composable
+actual fun ProgressiveTopBlur(
+    state: GlassBackdropState,
+    height: Dp,
+    modifier: Modifier
+) {
+    val glass = LocalGlassSettings.current
+    Box(modifier.fillMaxWidth().height(height)) {
+        // Legibility scrim underneath the blur.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.55f),
+                        1f to Color.Transparent
+                    )
+                )
+        )
+        if (glass.enabled) {
+            // Three blurs of decreasing strength, each masked to a shorter-reaching fade, add up
+            // to a smooth progressive ramp (strongest at the top edge).
+            BlurStrip(state, radius = 22.dp, fadeEnd = 0.50f)
+            BlurStrip(state, radius = 10.dp, fadeEnd = 0.78f)
+            BlurStrip(state, radius = 3.dp, fadeEnd = 1.00f)
+        }
+    }
+}
+
+@Composable
+private fun BlurStrip(state: GlassBackdropState, radius: Dp, fadeEnd: Float) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0f to Color.Black,
+                        fadeEnd to Color.Transparent,
+                        1f to Color.Transparent
+                    ),
+                    blendMode = BlendMode.DstIn
+                )
+            }
+            .drawBackdrop(
+                backdrop = state.backdrop,
+                shape = { RectangleShape },
+                effects = { blur(radius.toPx()) },
+                highlight = null,
+                shadow = null
+            )
+    )
 }

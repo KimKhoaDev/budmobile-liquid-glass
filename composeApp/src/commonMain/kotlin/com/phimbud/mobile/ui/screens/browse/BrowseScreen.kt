@@ -1,5 +1,7 @@
 package com.phimbud.mobile.ui.screens.browse
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.items
 import com.phimbud.mobile.ui.components.liquidPress
 import com.phimbud.mobile.ui.components.liquidGlassPress
 import com.phimbud.mobile.ui.components.liquidGlass
@@ -95,6 +97,29 @@ import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.State
+import androidx.compose.ui.draw.drawBehind
+import com.phimbud.mobile.ui.components.GlassFilterChip
+import com.phimbud.mobile.ui.components.GlassSegmentedControl
+import com.phimbud.mobile.ui.components.LiquidGlassIconButton
+import com.phimbud.mobile.ui.components.PosterGridCard
+import com.phimbud.mobile.ui.components.ProgressiveTopBlur
+import com.phimbud.mobile.ui.components.glassBackdropSource
+import com.phimbud.mobile.ui.components.rememberGlassBackdropState
+import com.phimbud.mobile.ui.components.GlassBackdropState
+import com.phimbud.mobile.ui.settings.LocalGlassSettings
+
+private val HeaderHeight = 64.dp
+
 @Composable
 fun BrowseScreen(
     viewModel: BrowseViewModel,
@@ -109,169 +134,262 @@ fun BrowseScreen(
     val scrollResetTrigger by viewModel.scrollResetTrigger.collectAsState()
 
     val gridState = rememberLazyGridState()
-    val coroutineScope = rememberCoroutineScope()
+    val backdrop = rememberGlassBackdropState()
     val yearOptions = remember { BrowseFilterOptions.getYearOptions() }
-
-    var isFilterPanelExpanded by rememberSaveable { mutableStateOf(true) }
-
-    val isScrolledPastFilter by remember {
-        derivedStateOf {
-            gridState.firstVisibleItemIndex > 0
-        }
-    }
+    var isPanelExpanded by rememberSaveable { mutableStateOf(false) }
 
     val isNearEnd by remember {
         derivedStateOf {
-            val layoutInfo = gridState.layoutInfo
-            val total = layoutInfo.totalItemsCount
-            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            total > 1 && lastVisible >= total - 6
+            val info = gridState.layoutInfo
+            val total = info.totalItemsCount
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            total > 1 && lastVisible >= total - 8
         }
     }
 
     LaunchedEffect(scrollResetTrigger) {
-        if (scrollResetTrigger > 0) {
-            gridState.scrollToItem(0)
-        }
+        if (scrollResetTrigger > 0) gridState.scrollToItem(0)
     }
-
     LaunchedEffect(isNearEnd, movies.size) {
-        if (isNearEnd && movies.isNotEmpty()) {
-            viewModel.loadNextPage()
-        }
+        if (isNearEnd && movies.isNotEmpty()) viewModel.loadNextPage()
     }
 
-    val showActiveFilterStrip = filter.isActive && (!isFilterPanelExpanded || isScrolledPastFilter)
+    val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val horizontal = if (isWideScreen) 44.dp else 16.dp
+    val gridSpacing = if (isWideScreen) 16.dp else 12.dp
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(NetflixBlack)
-            .statusBarsPadding()
-            .padding(horizontal = if (isWideScreen) 44.dp else 14.dp)
-    ) {
-        // Pinned Header Row: Title + Active Count + Reset + Filter Toggle
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+    // One shared pulse for every skeleton tile (read in the draw phase -> zero recomposition).
+    val pulse = rememberInfiniteTransition(label = "skeleton").animateFloat(
+        initialValue = 0.05f,
+        targetValue = 0.13f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "skeletonPulse"
+    )
+
+    Box(modifier = modifier.fillMaxSize().background(NetflixBlack)) {
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = if (isWideScreen) 165.dp else 104.dp),
+            state = gridState,
+            contentPadding = PaddingValues(
+                start = horizontal,
+                end = horizontal,
+                top = topInset + HeaderHeight,
+                bottom = 24.dp + LocalBottomOverlayInset.current
+            ),
+            verticalArrangement = Arrangement.spacedBy(gridSpacing),
+            horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+            modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 8.dp)
+            item(
+                key = "browse_controls",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "controls"
             ) {
-                Text(
-                    text = "Khám phá",
-                    color = NetflixTextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                BrowseControls(
+                    filter = filter,
+                    yearOptions = yearOptions,
+                    isPanelExpanded = isPanelExpanded,
+                    viewModel = viewModel
                 )
+            }
 
-                if (filter.activeCount > 0) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .liquidGlass(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
-                            .padding(horizontal = 7.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "${filter.activeCount}",
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            softWrap = false
+            when {
+                isLoading && movies.isEmpty() -> {
+                    items(
+                        count = 12,
+                        key = { "skeleton_$it" },
+                        contentType = { "skeleton" }
+                    ) { SkeletonPoster(pulse, isWideScreen) }
+                }
+
+                errorMessage != null && movies.isEmpty() -> {
+                    item(key = "browse_error", span = { GridItemSpan(maxLineSpan) }, contentType = "status") {
+                        StatusMessage(
+                            message = errorMessage ?: "Không thể tải danh sách phim",
+                            actionLabel = "Thử lại",
+                            onAction = { viewModel.retry() }
                         )
                     }
                 }
-            }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (filter.isActive) {
-                    Text(
-                        text = "Đặt lại",
-                        color = NetflixRed,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable { viewModel.resetFilter() }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+                !isLoading && movies.isEmpty() -> {
+                    item(key = "browse_empty", span = { GridItemSpan(maxLineSpan) }, contentType = "status") {
+                        StatusMessage(
+                            message = "Không tìm thấy phim phù hợp với bộ lọc đã chọn",
+                            actionLabel = if (filter.isActive) "Đặt lại bộ lọc" else null,
+                            onAction = { viewModel.resetFilter() }
+                        )
+                    }
                 }
 
-                val isPanelCurrentlyVisible = isFilterPanelExpanded && !isScrolledPastFilter
-                Surface(
-                    onClick = {
-                        if (isFilterPanelExpanded && isScrolledPastFilter) {
-                            coroutineScope.launch {
-                                gridState.animateScrollToItem(0)
-                            }
-                        } else {
-                            val nextExpanded = !isFilterPanelExpanded
-                            isFilterPanelExpanded = nextExpanded
-                            if (nextExpanded && isScrolledPastFilter) {
-                                coroutineScope.launch {
-                                    gridState.animateScrollToItem(0)
-                                }
+                else -> {
+                    items(
+                        items = movies,
+                        key = { it.fid },
+                        contentType = { "poster" }
+                    ) { movie ->
+                        PosterGridCard(
+                            movie = movie,
+                            onClick = { onMovieClick(movie) },
+                            isWideScreen = isWideScreen
+                        )
+                    }
+                    if (isLoading) {
+                        item(key = "browse_page_loading", span = { GridItemSpan(maxLineSpan) }, contentType = "loading_more") {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = LocalGlassSettings.current.accent.color, modifier = Modifier.size(28.dp))
                             }
                         }
-                    },
-                    color = Color.Transparent,
-                    shape = RoundedCornerShape(50),
-                    modifier = Modifier.liquidGlassPress(
-                        RoundedCornerShape(50),
-                        tint = if (filter.isActive) NetflixRed else Color.Unspecified,
-                        fillAlpha = if (filter.isActive) 0.2f else if (isPanelCurrentlyVisible) 0.18f else 0.12f
-                    )
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FilterList,
-                            contentDescription = "Bộ lọc",
-                            tint = if (filter.isActive) NetflixRed else Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = "Bộ lọc",
-                            color = NetflixTextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Icon(
-                            imageVector = if (isPanelCurrentlyVisible) {
-                                Icons.Default.KeyboardArrowUp
-                            } else {
-                                Icons.Default.KeyboardArrowDown
-                            },
-                            contentDescription = null,
-                            tint = NetflixTextSecondary,
-                            modifier = Modifier.size(17.dp)
-                        )
                     }
                 }
             }
         }
 
-        // Compact Active Filter Chips Strip when panel is collapsed or scrolled out of view
+        // Progressive blur: content scrolling under the header melts into the status bar.
+        ProgressiveTopBlur(
+            state = backdrop,
+            height = topInset + HeaderHeight + 22.dp,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+
+        BrowseHeader(
+            filter = filter,
+            isPanelExpanded = isPanelExpanded,
+            backdrop = backdrop,
+            onTogglePanel = { isPanelExpanded = !isPanelExpanded },
+            onReset = { viewModel.resetFilter() },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = topInset)
+                .padding(horizontal = horizontal)
+        )
+    }
+}
+
+@Composable
+private fun BrowseHeader(
+    filter: BrowseFilter,
+    isPanelExpanded: Boolean,
+    backdrop: GlassBackdropState,
+    onTogglePanel: () -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val accent = LocalGlassSettings.current.accent.color
+    Row(
+        modifier = modifier.fillMaxWidth().height(HeaderHeight),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Khám phá",
+            color = NetflixTextPrimary,
+            fontSize = 30.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
+        )
+        if (filter.isActive) {
+            Text(
+                text = "Đặt lại",
+                color = accent,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable(onClick = onReset)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            )
+        }
+        Box {
+            LiquidGlassIconButton(state = backdrop, onClick = onTogglePanel) {
+                Icon(
+                    imageVector = Icons.Default.FilterList,
+                    contentDescription = "Bộ lọc",
+                    tint = if (isPanelExpanded || filter.isActive) accent else Color.White
+                )
+            }
+            if (filter.activeCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(18.dp)
+                        .background(accent, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "${filter.activeCount}",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrowseControls(
+    filter: BrowseFilter,
+    yearOptions: List<FilterOption>,
+    isPanelExpanded: Boolean,
+    viewModel: BrowseViewModel
+) {
+    val typeOptions = BrowseFilterOptions.TYPE_OPTIONS
+    val typeLabels = remember { typeOptions.map { it.label.trim('-', ' ') } }
+    val typeIndex = typeOptions.indexOfFirst { it.value == filter.type }.coerceAtLeast(0)
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        GlassSegmentedControl(
+            options = typeLabels,
+            selectedIndex = typeIndex,
+            onSelect = { viewModel.updateType(typeOptions[it].value) }
+        )
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(
+                items = BrowseFilterOptions.GENRE_OPTIONS,
+                key = { it.label },
+                contentType = { "genre_chip" }
+            ) { option ->
+                GlassFilterChip(
+                    label = option.label.trim('-', ' '),
+                    selected = if (option.value == null) filter.genre.isNullOrBlank() else option.value == filter.genre,
+                    onClick = { viewModel.updateGenre(option.value) }
+                )
+            }
+        }
+
         AnimatedVisibility(
-            visible = showActiveFilterStrip,
+            visible = isPanelExpanded,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            BrowseFilterCard(
+                filter = filter,
+                yearOptions = yearOptions,
+                onTypeSelected = { viewModel.updateType(it) },
+                onGenreSelected = { viewModel.updateGenre(it) },
+                onCountrySelected = { viewModel.updateCountry(it) },
+                onYearSelected = { viewModel.updateYear(it) },
+                onDurationSelected = { viewModel.updateDuration(it) },
+                onSortSelected = { viewModel.updateSort(it) }
+            )
+        }
+
+        AnimatedVisibility(
+            visible = filter.isActive && !isPanelExpanded,
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {
@@ -286,147 +404,45 @@ fun BrowseScreen(
                 onClearSort = { viewModel.updateSort(null) }
             )
         }
+    }
+}
 
-        // Main Scrollable Grid (Filter Panel at top scrolls away naturally with posters)
-        val gridSpacing = if (isWideScreen) 16.dp else 10.dp
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = if (isWideScreen) 165.dp else 110.dp),
-            state = gridState,
-            contentPadding = PaddingValues(bottom = 24.dp + LocalBottomOverlayInset.current),
-            verticalArrangement = Arrangement.spacedBy(gridSpacing),
-            horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            item(
-                key = "browse_filter_panel",
-                span = { GridItemSpan(maxLineSpan) },
-                contentType = "filter_panel"
+@Composable
+private fun SkeletonPoster(pulse: State<Float>, isWideScreen: Boolean) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(2f / 3f)
+            .clip(RoundedCornerShape(if (isWideScreen) 12.dp else 16.dp))
+            .drawBehind { drawRect(Color.White.copy(alpha = pulse.value)) }
+    )
+}
+
+@Composable
+private fun StatusMessage(
+    message: String,
+    actionLabel: String?,
+    onAction: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 56.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = message,
+            color = NetflixTextSecondary,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center
+        )
+        if (actionLabel != null) {
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = onAction,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.liquidGlassPress(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
             ) {
-                AnimatedVisibility(
-                    visible = isFilterPanelExpanded,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    BrowseFilterCard(
-                        filter = filter,
-                        yearOptions = yearOptions,
-                        onTypeSelected = { viewModel.updateType(it) },
-                        onGenreSelected = { viewModel.updateGenre(it) },
-                        onCountrySelected = { viewModel.updateCountry(it) },
-                        onYearSelected = { viewModel.updateYear(it) },
-                        onDurationSelected = { viewModel.updateDuration(it) },
-                        onSortSelected = { viewModel.updateSort(it) }
-                    )
-                }
-            }
-
-            if (isLoading && movies.isEmpty()) {
-                item(
-                    key = "browse_initial_loading",
-                    span = { GridItemSpan(maxLineSpan) },
-                    contentType = "status"
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 72.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = NetflixRed)
-                    }
-                }
-            } else if (errorMessage != null && movies.isEmpty()) {
-                item(
-                    key = "browse_error",
-                    span = { GridItemSpan(maxLineSpan) },
-                    contentType = "status"
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 56.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = errorMessage ?: "Không thể tải danh sách phim",
-                            color = NetflixTextSecondary,
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Button(
-                            onClick = { viewModel.retry() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier.liquidGlassPress(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
-                        ) {
-                            Text("Thử lại", maxLines = 1, softWrap = false)
-                        }
-                    }
-                }
-            } else if (!isLoading && movies.isEmpty()) {
-                item(
-                    key = "browse_empty",
-                    span = { GridItemSpan(maxLineSpan) },
-                    contentType = "status"
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 56.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Không tìm thấy phim phù hợp với bộ lọc đã chọn",
-                            color = NetflixTextSecondary,
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        if (filter.isActive) {
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Button(
-                                onClick = { viewModel.resetFilter() },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                                shape = RoundedCornerShape(50),
-                                modifier = Modifier.liquidGlassPress(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
-                            ) {
-                                Text("Đặt lại bộ lọc", maxLines = 1, softWrap = false)
-                            }
-                        }
-                    }
-                }
-            } else {
-                items(
-                    items = movies,
-                    key = { it.fid },
-                    contentType = { "browse_movie" }
-                ) { movie ->
-                    BrowseMovieGridCard(
-                        movie = movie,
-                        onClick = { onMovieClick(movie) },
-                        isWideScreen = isWideScreen
-                    )
-                }
-
-                if (isLoading) {
-                    item(
-                        key = "browse_page_loading",
-                        span = { GridItemSpan(maxLineSpan) },
-                        contentType = "loading_more"
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                color = NetflixRed,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-                }
+                Text(actionLabel, maxLines = 1, softWrap = false)
             }
         }
     }
@@ -595,130 +611,6 @@ private fun RemovableFilterChip(
                 modifier = Modifier.size(13.dp)
             )
         }
-    }
-}
-
-@Composable
-private fun BrowseMovieGridCard(
-    movie: Movie,
-    onClick: () -> Unit,
-    isWideScreen: Boolean = false
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isWideScreen && isHovered) 1.04f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (isWideScreen && isHovered) Color.White.copy(alpha = 0.55f) else Color.Transparent
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .hoverable(interactionSource)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null
-            ) { onClick() }
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f)
-                .clip(RoundedCornerShape(if (isWideScreen) 8.dp else 6.dp))
-                .border(
-                    width = if (isWideScreen && isHovered) 1.5.dp else 0.dp,
-                    color = borderColor,
-                    shape = RoundedCornerShape(if (isWideScreen) 8.dp else 6.dp)
-                )
-                .background(NetflixCard)
-        ) {
-            if (!movie.posterUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = movie.posterUrl,
-                    contentDescription = movie.displayTitle,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Text(
-                    text = movie.displayTitle,
-                    color = NetflixTextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .padding(8.dp)
-                        .align(Alignment.Center)
-                )
-            }
-
-            if (movie.imdbRating != null && movie.imdbRating > 0) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(4.dp)
-                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = NetflixGold,
-                        modifier = Modifier.size(10.dp)
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Text(
-                        text = formatOneDecimal(movie.imdbRating),
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
-
-            if (movie.year > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                ) {
-                    Text(
-                        text = movie.year.toString(),
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(if (isWideScreen) 6.dp else 4.dp))
-
-        Text(
-            text = movie.displayTitle,
-            color = if (isWideScreen && isHovered) Color.White else NetflixTextPrimary,
-            fontSize = if (isWideScreen) 14.sp else 12.sp,
-            fontWeight = if (isWideScreen && isHovered) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = if (isWideScreen) 2 else 1,
-            lineHeight = if (isWideScreen) 18.sp else 14.sp,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
