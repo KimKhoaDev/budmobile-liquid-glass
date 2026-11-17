@@ -1,0 +1,185 @@
+name: Auto Release
+
+# Publishes a GitHub Release (Android APK + Windows installers) automatically:
+#   * push to main/master with a NEW `packageVersion` in composeApp/build.gradle.kts
+#       -> builds, then creates tag v<version> and the release
+#   * push a tag like v1.2.0 -> builds and releases that tag
+#   * manual run (workflow_dispatch) -> release the current version, optionally forcing a re-release
+# A version that already has a tag is skipped, so ordinary pushes never create duplicate releases.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "composeApp/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - ".github/workflows/release.yml"
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Re-release even if the tag already exists (replaces its assets)"
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark as pre-release"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      should_release: ${{ steps.v.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version and decide whether to release
+        id: v
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(grep -oP 'packageVersion\s*=\s*"\K[^"]+' composeApp/build.gradle.kts | head -n1)"
+          fi
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::Could not determine the version (packageVersion not found)"; exit 1
+          fi
+          TAG="v${VERSION}"
+          SHOULD=true
+          if [[ "${GITHUB_REF}" != refs/tags/v* ]] && git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            if [[ "${{ github.event.inputs.force }}" == "true" ]]; then
+              echo "Tag ${TAG} exists but force=true, re-releasing."
+            else
+              SHOULD=false
+              echo "Tag ${TAG} already exists - nothing to release. Bump packageVersion to publish a new one."
+            fi
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "should_release=${SHOULD}" >> "$GITHUB_OUTPUT"
+
+  build-android:
+    name: Build Android APK
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Stamp version into the APK
+        shell: bash
+        run: |
+          sed -i "s/versionName = \".*\"/versionName = \"${{ needs.prepare.outputs.version }}\"/" composeApp/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = ${{ github.run_number }}/" composeApp/build.gradle.kts
+
+      - name: Build release APK (minified)
+        run: |
+          chmod +x gradlew
+          ./gradlew :composeApp:assembleRelease --console=plain
+
+      - name: Rename APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          APK="$(ls composeApp/build/outputs/apk/release/*.apk | head -n1)"
+          cp "$APK" "dist/PhimBud-${{ needs.prepare.outputs.tag }}-android.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows installers
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure WiX Toolset (needed for .exe / .msi installers)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue) -and -not (Test-Path "$env:WIX\bin\candle.exe")) {
+            choco install wixtoolset -y --no-progress
+          }
+
+      - name: Build installers
+        shell: bash
+        run: ./gradlew :composeApp:packageExe :composeApp:packageMsi --console=plain
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p dist
+          for f in composeApp/build/release-windows-*/main/exe/*.exe; do cp "$f" "dist/PhimBud-${{ needs.prepare.outputs.tag }}-windows-setup.exe"; done
+          for f in composeApp/build/release-windows-*/main/msi/*.msi; do cp "$f" "dist/PhimBud-${{ needs.prepare.outputs.tag }}-windows.msi"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [prepare, build-android, build-windows]
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lh dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: PhimBud ${{ needs.prepare.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          fail_on_unmatched_files: true
+          files: dist/*

@@ -57,3 +57,14 @@ Toàn bộ giao diện ứng dụng (Android & iOS) phải tuân thủ nghiêm n
    - **Bỏ qua Mở đầu & Tóm tắt (`FloatingSkipOverlay`)**: Nút nổi viền trắng nền đen mờ ở góc dưới bên phải xuất hiện tự động khi đến đoạn Intro/Recap và tự ẩn sau 10 giây nếu không bấm.
    - **Ngăn kéo Chọn Tập phim trong Trình phát (`PlayerEpisodesOverlay`)**: Trượt ra mượt mà từ cạnh màn hình, hỗ trợ chọn Mùa (Season), hiển thị danh sách tập kèm thumbnail, tự cuộn tới tập đang phát có nhãn đỏ "Đang phát".
    - **Tự động chuyển tập khi kết thúc (`isPlaybackEnded`)**: Khi tập hiện tại phát xong, tự động lưu tiến độ và chuyển mượt sang tập tiếp theo mà người dùng không cần chạm màn hình.
+
+---
+
+## 4. Tự động phát hành (Auto Release)
+
+Workflow `.github/workflows/release.yml` tự build và đăng GitHub Release (APK Android + bộ cài `.exe`/`.msi` Windows):
+
+- **Cách phát hành**: tăng `packageVersion` trong `composeApp/build.gradle.kts` rồi push lên `main` → tự tạo tag `v<phiên bản>` và Release kèm ghi chú tự sinh.
+- Hoặc push tag `v*` thủ công, hoặc chạy tay (`workflow_dispatch`, có tuỳ chọn `force` / `prerelease`).
+- Phiên bản đã có tag sẽ được bỏ qua nên push bình thường không tạo Release trùng.
+- iOS vẫn build thủ công qua `build-ios.yml`.

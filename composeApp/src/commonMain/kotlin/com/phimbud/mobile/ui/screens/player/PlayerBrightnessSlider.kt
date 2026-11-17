@@ -71,33 +71,33 @@ fun PlayerBrightnessBar(
     val icon = brightnessIconForLevel(clampedBrightness)
     var dragging by remember { mutableStateOf(false) }
     val trackWidth by animateDpAsState(
-        targetValue = if (dragging) 16.dp else 8.dp,
+        targetValue = if (dragging) 12.dp else 6.dp,
         animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
         label = "brightnessTrackWidth"
     )
 
     Surface(
         color = Color.Transparent,
-        shape = RoundedCornerShape(28.dp),
-        modifier = modifier.liquidGlass(RoundedCornerShape(28.dp), tint = Color.Black, fillAlpha = 0.14f)
+        shape = RoundedCornerShape(22.dp),
+        modifier = modifier.liquidGlass(RoundedCornerShape(22.dp), tint = Color.Black, fillAlpha = 0.12f)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier
-                .padding(horizontal = 8.dp, vertical = 12.dp)
-                .width(36.dp)
-                .height(160.dp)
+                .padding(horizontal = 6.dp, vertical = 8.dp)
+                .width(28.dp)
+                .height(112.dp)
         ) {
             // Sun / Brightness Icon
             Icon(
                 imageVector = icon,
                 contentDescription = "Độ sáng $percentText",
                 tint = NetflixRed,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(16.dp)
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Vertical Track and Fill
             Box(
@@ -135,13 +135,13 @@ fun PlayerBrightnessBar(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Percentage Text
             Text(
                 text = percentText,
                 color = Color.White,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
             )
         }

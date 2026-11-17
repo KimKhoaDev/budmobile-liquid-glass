@@ -2,6 +2,8 @@
 
 package com.phimbud.mobile.ui.screens.player
 
+import com.phimbud.mobile.ui.settings.LocalGlassSettings
+import androidx.compose.foundation.layout.fillMaxHeight
 import com.phimbud.mobile.ui.components.LiquidSliderThumb
 import com.phimbud.mobile.ui.components.liquidPress
 import com.phimbud.mobile.ui.components.liquidGlassPress
@@ -618,24 +620,24 @@ fun PlayerScreen(
                         shape = RoundedCornerShape(50),
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(20.dp)
-                            .liquidGlassPress(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.14f)
+                            .padding(14.dp)
+                            .liquidGlassPress(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.12f)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Lock,
                                 contentDescription = "Mở khóa màn hình",
                                 tint = NetflixRed,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "Mở khóa",
                                 color = Color.White,
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -648,7 +650,7 @@ fun PlayerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopCenter)
-                            .padding(16.dp)
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -656,12 +658,15 @@ fun PlayerScreen(
                         ) {
                             IconButton(
                                 onClick = onBackClick,
-                                modifier = Modifier.liquidGlassPress(CircleShape, fillAlpha = 0.16f)
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .liquidGlassPress(CircleShape, tint = Color.Black, fillAlpha = 0.12f)
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Quay lại",
-                                    tint = Color.White
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.width(8.dp))
@@ -670,8 +675,8 @@ fun PlayerScreen(
                                     if (it.showNameVi.isNotBlank()) "${it.showNameVi} - Tập ${it.episodeNumber}" else it.showNameEn
                                 } ?: "Đang tải...",
                                 color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = androidx.compose.ui.text.TextStyle(
@@ -686,18 +691,20 @@ fun PlayerScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 onClick = { showServerDialog = true },
-                                color = Color.White.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.padding(horizontal = 4.dp)
+                                color = Color.Transparent,
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier
+                                    .padding(horizontal = 3.dp)
+                                    .liquidGlassPress(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.12f)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
                                 ) {
                                     Text(
                                         text = "Server ${readyState?.currentServer ?: viewModel.currentServer}",
                                         color = Color.White,
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
@@ -705,25 +712,31 @@ fun PlayerScreen(
 
                             Surface(
                                 onClick = { showSubtitleDialog = true },
-                                color = if (readyState?.activeSubtitle != null) NetflixRed.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.padding(horizontal = 4.dp)
+                                color = Color.Transparent,
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier
+                                    .padding(horizontal = 3.dp)
+                                    .liquidGlassPress(
+                                        RoundedCornerShape(50),
+                                        tint = if (readyState?.activeSubtitle != null) NetflixRed else Color.Black,
+                                        fillAlpha = if (readyState?.activeSubtitle != null) 0.2f else 0.12f
+                                    )
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Subtitles,
                                         contentDescription = "Phụ đề",
                                         tint = if (readyState?.activeSubtitle != null) NetflixRed else Color.White,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(15.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         text = readyState?.activeSubtitle?.let { "Sub: ${it.label}" } ?: "Sub: Tắt",
                                         color = if (readyState?.activeSubtitle != null) Color.White else Color.LightGray,
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
@@ -738,13 +751,19 @@ fun PlayerScreen(
                                         VideoResizeMode.FILL -> VideoResizeMode.FIT
                                     }
                                 },
-                                color = if (resizeMode != VideoResizeMode.FIT) NetflixRed.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.padding(horizontal = 4.dp)
+                                color = Color.Transparent,
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier
+                                    .padding(horizontal = 3.dp)
+                                    .liquidGlassPress(
+                                        RoundedCornerShape(50),
+                                        tint = if (resizeMode != VideoResizeMode.FIT) NetflixRed else Color.Black,
+                                        fillAlpha = if (resizeMode != VideoResizeMode.FIT) 0.2f else 0.12f
+                                    )
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Icon(
                                         imageVector = when (resizeMode) {
@@ -754,9 +773,9 @@ fun PlayerScreen(
                                         },
                                         contentDescription = "Tỉ lệ màn hình",
                                         tint = if (resizeMode != VideoResizeMode.FIT) NetflixRed else Color.White,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(15.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         text = when (resizeMode) {
                                             VideoResizeMode.ZOOM -> "Tràn viền"
@@ -764,7 +783,7 @@ fun PlayerScreen(
                                             VideoResizeMode.FIT -> "Chuẩn"
                                         },
                                         color = if (resizeMode != VideoResizeMode.FIT) Color.White else Color.LightGray,
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
@@ -772,12 +791,15 @@ fun PlayerScreen(
 
                             IconButton(
                                 onClick = { isLocked = true },
-                                modifier = Modifier.liquidGlassPress(CircleShape, fillAlpha = 0.16f)
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .liquidGlassPress(CircleShape, tint = Color.Black, fillAlpha = 0.12f)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.LockOpen,
                                     contentDescription = "Khóa màn hình",
-                                    tint = Color.White
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
@@ -797,18 +819,18 @@ fun PlayerScreen(
                                 controller.seekTo((controller.currentPositionMs() - 10_000L).coerceAtLeast(0L))
                             },
                             modifier = Modifier
-                                .size(54.dp)
-                                .liquidGlassPress(CircleShape, fillAlpha = 0.16f)
+                                .size(42.dp)
+                                .liquidGlassPress(CircleShape, tint = Color.Black, fillAlpha = 0.12f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Replay10,
                                 contentDescription = "Lùi 10s",
                                 tint = Color.White,
-                                modifier = Modifier.size(38.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(36.dp))
+                        Spacer(modifier = Modifier.width(26.dp))
 
                         IconButton(
                             onClick = {
@@ -816,18 +838,18 @@ fun PlayerScreen(
                                 if (controller.isPlaying) controller.pause() else controller.play()
                             },
                             modifier = Modifier
-                                .size(68.dp)
-                                .liquidGlassPress(CircleShape, fillAlpha = 0.16f)
+                                .size(56.dp)
+                                .liquidGlassPress(CircleShape, tint = Color.Black, fillAlpha = 0.12f)
                         ) {
                             Icon(
                                 imageVector = if (controller.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (controller.isPlaying) "Tạm dừng" else "Tiếp tục",
                                 tint = Color.White,
-                                modifier = Modifier.size(44.dp)
+                                modifier = Modifier.size(34.dp)
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(36.dp))
+                        Spacer(modifier = Modifier.width(26.dp))
 
                         IconButton(
                             onClick = {
@@ -836,14 +858,14 @@ fun PlayerScreen(
                                 controller.seekTo((controller.currentPositionMs() + 10_000L).coerceAtMost(maxDur))
                             },
                             modifier = Modifier
-                                .size(54.dp)
-                                .liquidGlassPress(CircleShape, fillAlpha = 0.16f)
+                                .size(42.dp)
+                                .liquidGlassPress(CircleShape, tint = Color.Black, fillAlpha = 0.12f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Forward10,
                                 contentDescription = "Tới 10s",
                                 tint = Color.White,
-                                modifier = Modifier.size(38.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                         }
                     }
@@ -857,7 +879,7 @@ fun PlayerScreen(
                         },
                         modifier = Modifier
                             .align(Alignment.CenterStart)
-                            .padding(start = 24.dp)
+                            .padding(start = 16.dp)
                     )
 
                     val knownDurMs = readyState?.watchInfo?.durationSeconds?.times(1000.0)?.toLong()?.coerceAtLeast(0L) ?: 0L
@@ -884,7 +906,7 @@ fun PlayerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.BottomCenter)
-                            .padding(horizontal = 24.dp, vertical = 14.dp)
+                            .padding(horizontal = 18.dp, vertical = 8.dp)
                     )
                 }
             }
@@ -904,7 +926,7 @@ fun PlayerScreen(
                 .displayCutoutPadding()
                 .padding(
                     end = 26.dp,
-                    bottom = if (controlsVisible && !isLocked) 96.dp else 28.dp
+                    bottom = if (controlsVisible && !isLocked) 78.dp else 24.dp
                 )
         )
 
@@ -1643,26 +1665,26 @@ private fun FloatingSkipOverlay(
                     controller.seekTo(currentSeg.endMs)
                     activeSegment = null
                 },
-                color = Color.Black.copy(alpha = 0.82f),
-                border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.92f)),
-                shape = RoundedCornerShape(6.dp)
+                color = Color.Transparent,
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.liquidGlassPress(RoundedCornerShape(50), tint = Color.Black, fillAlpha = 0.14f)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = currentSeg.label,
                         tint = Color.White,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
                         text = currentSeg.label,
                         color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
                     )
                 }
             }
@@ -1725,167 +1747,150 @@ private fun PlayerBottomBar(
         isWithinIntroWindow &&
         duration > 180_000L
 
-    Column(modifier = modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        // Compact action pills, right aligned.
         Row(
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = "${formatPlaybackTime(currentPosition)} / ${formatPlaybackTime(duration)}",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                style = androidx.compose.ui.text.TextStyle(
-                    shadow = androidx.compose.ui.graphics.Shadow(
-                        color = Color.Black.copy(alpha = 0.85f),
-                        blurRadius = 6f
-                    )
+            if (showQuickSkip85s) {
+                PlayerPill(
+                    icon = Icons.Default.FastForward,
+                    label = "Bỏ qua +85s",
+                    contentDescription = "Bỏ qua Mở đầu (+85s)",
+                    onClick = {
+                        hasManuallySkipped = true
+                        onScrubActivity()
+                        val targetPos = (currentPosition + 85_000L).coerceAtMost(duration)
+                        controller.seekTo(targetPos)
+                        currentPosition = targetPos
+                    }
                 )
-            )
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (showQuickSkip85s) {
-                    Surface(
-                        onClick = {
-                            hasManuallySkipped = true
-                            onScrubActivity()
-                            val targetPos = (currentPosition + 85_000L).coerceAtMost(duration)
-                            controller.seekTo(targetPos)
-                            currentPosition = targetPos
-                        },
-                        color = Color.White.copy(alpha = 0.16f),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FastForward,
-                                contentDescription = "Bỏ qua Mở đầu (+85s)",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "Bỏ qua Mở đầu (+85s)",
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                }
-
-                if (hasEpisodesList) {
-                    Surface(
-                        onClick = onOpenEpisodesClick,
-                        color = Color.White.copy(alpha = 0.16f),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.VideoLibrary,
-                                contentDescription = "Các tập phim",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Các tập",
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                }
-
-                if (!nextTitleFid.isNullOrBlank()) {
-                    Surface(
-                        onClick = { onNextEpisodeClick(nextTitleFid) },
-                        color = Color.White.copy(alpha = 0.16f),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SkipNext,
-                                contentDescription = "Tập tiếp theo",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Tập tiếp theo",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                }
-
-                if (onToggleFullscreen != null) {
-                    Surface(
-                        onClick = onToggleFullscreen,
-                        color = Color.White.copy(alpha = 0.16f),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                                contentDescription = if (isFullscreen) "Thu nhỏ về cửa sổ" else "Toàn màn hình",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isFullscreen) "Thu nhỏ" else "Toàn màn hình",
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                }
+            }
+            if (hasEpisodesList) {
+                PlayerPill(
+                    icon = Icons.Default.VideoLibrary,
+                    label = "Tập",
+                    contentDescription = "Các tập phim",
+                    onClick = onOpenEpisodesClick
+                )
+            }
+            if (!nextTitleFid.isNullOrBlank()) {
+                PlayerPill(
+                    icon = Icons.Default.SkipNext,
+                    label = "Tập sau",
+                    contentDescription = "Tập tiếp theo",
+                    onClick = { onNextEpisodeClick(nextTitleFid) }
+                )
+            }
+            if (onToggleFullscreen != null) {
+                PlayerPill(
+                    icon = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                    label = null,
+                    contentDescription = if (isFullscreen) "Thu nhỏ về cửa sổ" else "Toàn màn hình",
+                    onClick = onToggleFullscreen
+                )
             }
         }
 
-        val seekInteraction = remember { MutableInteractionSource() }
-        Slider(
-            value = if (duration > 0L) (currentPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f,
-            onValueChange = { frac ->
-                isScrubbing = true
-                onScrubActivity()
-                currentPosition = (frac * duration).toLong()
-            },
-            onValueChangeFinished = {
-                controller.seekTo(currentPosition)
-                isScrubbing = false
-                onScrubActivity()
-            },
-            colors = SliderDefaults.colors(
-                thumbColor = NetflixRed,
-                activeTrackColor = NetflixRed,
-                inactiveTrackColor = Color.Gray.copy(alpha = 0.5f)
-            ),
-            interactionSource = seekInteraction,
-            thumb = { LiquidSliderThumb(seekInteraction) },
+        // Slim seek bar with the elapsed / total time on either side.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = formatPlaybackTime(currentPosition),
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false
+            )
+            val seekInteraction = remember { MutableInteractionSource() }
+            val accent = LocalGlassSettings.current.accent.color
+            Slider(
+                value = if (duration > 0L) (currentPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f,
+                onValueChange = { frac ->
+                    isScrubbing = true
+                    onScrubActivity()
+                    currentPosition = (frac * duration).toLong()
+                },
+                onValueChangeFinished = {
+                    controller.seekTo(currentPosition)
+                    isScrubbing = false
+                    onScrubActivity()
+                },
+                interactionSource = seekInteraction,
+                thumb = { LiquidSliderThumb(seekInteraction, size = 16.dp) },
+                track = { state ->
+                    val range = state.valueRange
+                    val fraction = ((state.value - range.start) / (range.endInclusive - range.start))
+                        .coerceIn(0f, 1f)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.28f))
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(fraction)
+                                .fillMaxHeight()
+                                .background(accent)
+                        )
+                    }
+                },
+                modifier = Modifier.weight(1f).height(28.dp)
+            )
+            Text(
+                text = formatPlaybackTime(duration),
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    }
+}
+
+/** Compact black-glass action pill used in the player's bottom bar. */
+@Composable
+private fun PlayerPill(
+    icon: ImageVector,
+    label: String?,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(50)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .liquidGlassPress(shape, tint = Color.Black, fillAlpha = 0.12f)
+            .clip(shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = if (label != null) 10.dp else 8.dp, vertical = 5.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.White,
+            modifier = Modifier.size(15.dp)
         )
+        if (label != null) {
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
     }
 }
 

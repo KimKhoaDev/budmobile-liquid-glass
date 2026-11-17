@@ -70,7 +70,8 @@ fun Modifier.liquidPress(pressedScale: Float = 1.07f): Modifier = composed {
 @Composable
 fun LiquidSliderThumb(
     interactionSource: MutableInteractionSource,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 26.dp
 ) {
     val dragged by interactionSource.collectIsDraggedAsState()
     val pressed by interactionSource.collectIsPressedAsState()
@@ -81,7 +82,7 @@ fun LiquidSliderThumb(
     )
     Box(
         modifier
-            .size(26.dp)
+            .size(size)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
