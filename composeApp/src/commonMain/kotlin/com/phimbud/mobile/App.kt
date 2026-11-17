@@ -1,5 +1,8 @@
 package com.phimbud.mobile
 
+import com.phimbud.mobile.ui.components.LocalAmbientBackdrop
+import com.phimbud.mobile.ui.components.AuroraBackground
+import androidx.compose.ui.graphics.Color
 import com.phimbud.mobile.ui.screens.settings.SettingsScreen
 import com.phimbud.mobile.ui.settings.GlassSettingsController
 import com.phimbud.mobile.ui.settings.LocalGlassSettings
@@ -110,6 +113,7 @@ fun App(
 
     PhimBudTheme {
         val glassController = remember { GlassSettingsController(repository.platformContext) }
+        val ambientBackdrop = rememberGlassBackdropState()
         val navController = rememberNavController()
         val isLoggedIn by repository.isLoggedIn.collectAsState()
         val startDestination = remember { if (repository.isLoggedIn.value) "main" else "login" }
@@ -117,12 +121,16 @@ fun App(
 
         CompositionLocalProvider(
             LocalGlassSettings provides glassController.settings,
-            LocalGlassSettingsController provides glassController
+            LocalGlassSettingsController provides glassController,
+            LocalAmbientBackdrop provides ambientBackdrop
         ) {
+        Box(Modifier.fillMaxSize()) {
+        // Wallpaper that every glass control refracts (and the visible app background).
+        AuroraBackground(Modifier.fillMaxSize().glassBackdropSource(ambientBackdrop))
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.fillMaxSize().background(NetflixBlack),
+            modifier = Modifier.fillMaxSize(),
             // The Navigation default is a 700ms cross-fade, which reads as lag. Keep it short.
             enterTransition = { fadeIn(tween(200, easing = EaseOutCubic)) },
             exitTransition = { fadeOut(tween(140)) },
@@ -222,7 +230,7 @@ fun App(
                                 )
                             }
                         },
-                        containerColor = NetflixBlack
+                        containerColor = Color.Transparent
                     ) { innerPadding ->
                         Box(modifier = Modifier.padding(innerPadding).fillMaxSize().glassBackdropSource(glassState)) {
                             saveableStateHolder.SaveableStateProvider(currentTab) {
@@ -332,7 +340,18 @@ fun App(
 
             composable(
                 route = "detail/{fid}",
-                arguments = listOf(navArgument("fid") { type = NavType.StringType })
+                arguments = listOf(navArgument("fid") { type = NavType.StringType }),
+                // Opening a film: the page blooms in from slightly smaller, cinematic and quick.
+                enterTransition = {
+                    fadeIn(tween(340, easing = EaseOutCubic)) +
+                        scaleIn(initialScale = 0.9f, animationSpec = tween(420, easing = EaseOutCubic))
+                },
+                exitTransition = { fadeOut(tween(180)) },
+                popEnterTransition = { fadeIn(tween(240, easing = EaseOutCubic)) },
+                popExitTransition = {
+                    fadeOut(tween(240, easing = EaseInCubic)) +
+                        scaleOut(targetScale = 0.92f, animationSpec = tween(280, easing = EaseInCubic))
+                }
             ) { backStackEntry ->
                 val fid = backStackEntry.arguments?.getString("fid").orEmpty()
                 val detailVm = viewModel(key = fid) { DetailViewModel(repository, fid) }
@@ -385,15 +404,18 @@ fun App(
                 val watchFid = backStackEntry.arguments?.getString("watchFid").orEmpty()
                 val playerVm = viewModel(key = watchFid) { PlayerViewModel(repository, watchFid) }
 
-                PlayerScreen(
-                    viewModel = playerVm,
-                    onBackClick = { navController.popBackStack() },
-                    isFullscreen = isFullscreen,
-                    onToggleFullscreen = onToggleFullscreen
-                )
+                // Over video there is nothing to refract, so glass falls back to decorative mode.
+                CompositionLocalProvider(LocalAmbientBackdrop provides null) {
+                    PlayerScreen(
+                        viewModel = playerVm,
+                        onBackClick = { navController.popBackStack() },
+                        isFullscreen = isFullscreen,
+                        onToggleFullscreen = onToggleFullscreen
+                    )
+                }
             }
         }
-
+        }
         }
 
         LaunchedEffect(isLoggedIn) {

@@ -67,7 +67,6 @@ fun LoginScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(NetflixBlack)
             .statusBarsPadding()
             .padding(24.dp)
     ) {

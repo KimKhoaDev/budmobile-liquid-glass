@@ -44,6 +44,7 @@ actual fun Modifier.platformLiquidGlass(
     shape: Shape,
     tint: Color,
     fillAlpha: Float,
+    ambient: GlassBackdropState?,
     interactive: Boolean
 ): Modifier =
     this
@@ -98,3 +99,22 @@ actual fun ProgressiveTopBlur(
             )
     )
 }
+
+@Composable
+actual fun PlatformLiquidToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    accent: Color,
+    ambient: GlassBackdropState?,
+    modifier: Modifier
+) = FallbackLiquidToggle(checked, onCheckedChange, modifier, accent)
+
+@Composable
+actual fun PlatformLiquidSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    accent: Color,
+    ambient: GlassBackdropState?,
+    modifier: Modifier
+) = FallbackLiquidSlider(value, onValueChange, valueRange, accent, modifier)

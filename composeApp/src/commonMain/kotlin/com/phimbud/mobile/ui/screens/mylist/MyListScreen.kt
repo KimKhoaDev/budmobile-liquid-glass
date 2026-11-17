@@ -83,7 +83,7 @@ fun MyListScreen(
     val horizontal = if (isWideScreen) 44.dp else 16.dp
     val gridSpacing = if (isWideScreen) 16.dp else 12.dp
 
-    Box(modifier = modifier.fillMaxSize().background(NetflixBlack)) {
+    Box(modifier = modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = if (isWideScreen) 165.dp else 104.dp),
             state = gridState,

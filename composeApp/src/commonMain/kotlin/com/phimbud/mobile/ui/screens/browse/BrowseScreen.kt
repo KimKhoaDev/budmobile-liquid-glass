@@ -166,7 +166,7 @@ fun BrowseScreen(
         label = "skeletonPulse"
     )
 
-    Box(modifier = modifier.fillMaxSize().background(NetflixBlack)) {
+    Box(modifier = modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = if (isWideScreen) 165.dp else 104.dp),
             state = gridState,

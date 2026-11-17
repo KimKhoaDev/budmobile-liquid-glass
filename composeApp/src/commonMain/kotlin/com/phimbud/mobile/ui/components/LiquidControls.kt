@@ -18,6 +18,7 @@ import com.phimbud.mobile.ui.settings.LocalGlassSettings
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -94,7 +95,7 @@ fun LiquidSliderThumb(
  * the track fills with [accent] when on.
  */
 @Composable
-fun LiquidToggle(
+internal fun FallbackLiquidToggle(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -140,4 +141,51 @@ fun LiquidToggle(
                 .liquidGlass(RoundedCornerShape(50), tint = Color.White, fillAlpha = 0.24f)
         )
     }
+}
+
+/** Liquid switch. Android: the Kyant0 demo toggle (draggable, lens-refracting thumb). */
+@Composable
+fun LiquidToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    accent: Color = LocalGlassSettings.current.accent.color
+) {
+    PlatformLiquidToggle(checked, onCheckedChange, accent, LocalAmbientBackdrop.current, modifier)
+}
+
+/** Liquid slider. Android: the Kyant0 demo slider (springy glass thumb that magnifies the track). */
+@Composable
+fun LiquidSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    accent: Color = LocalGlassSettings.current.accent.color
+) {
+    PlatformLiquidSlider(value, onValueChange, valueRange, accent, LocalAmbientBackdrop.current, modifier)
+}
+
+@Composable
+internal fun FallbackLiquidSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    accent: Color,
+    modifier: Modifier = Modifier
+) {
+    val interaction = remember { MutableInteractionSource() }
+    androidx.compose.material3.Slider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = valueRange,
+        colors = androidx.compose.material3.SliderDefaults.colors(
+            thumbColor = accent,
+            activeTrackColor = accent,
+            inactiveTrackColor = Color.Gray.copy(alpha = 0.4f)
+        ),
+        interactionSource = interaction,
+        thumb = { LiquidSliderThumb(interaction) },
+        modifier = modifier.fillMaxWidth()
+    )
 }

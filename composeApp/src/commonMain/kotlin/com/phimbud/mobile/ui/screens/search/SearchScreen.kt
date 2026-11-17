@@ -73,7 +73,6 @@ fun SearchScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(NetflixBlack)
             .statusBarsPadding()
             .padding(
                 horizontal = if (isWideScreen) 44.dp else 16.dp,

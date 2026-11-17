@@ -23,6 +23,10 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import com.phimbud.mobile.ui.components.glass.DemoLiquidSlider
+import com.phimbud.mobile.ui.components.glass.DemoLiquidToggle
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.Backdrop
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -74,6 +78,8 @@ actual fun GlassBottomNavBar(
     modifier: Modifier
 ) {
     val glass = LocalGlassSettings.current
+    val ambientLayer = LocalAmbientBackdrop.current
+    val barBackdrop = if (ambientLayer != null) rememberCombinedBackdrop(ambientLayer.backdrop, state.backdrop) else state.backdrop
     val items = NavItem.entries
     val selectedIndex = items.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
 
@@ -96,7 +102,7 @@ actual fun GlassBottomNavBar(
                 // Avoid re-firing navigation for programmatic selection changes.
                 if (route != currentRouteState.value) onNavigateState.value(route)
             },
-            backdrop = state.backdrop,
+            backdrop = barBackdrop,
             tabsCount = items.size,
             accentColor = glass.accent.color,
             refraction = glass.refraction && glass.enabled,
@@ -127,10 +133,11 @@ actual fun Modifier.platformLiquidGlass(
     shape: Shape,
     tint: Color,
     fillAlpha: Float,
+    ambient: GlassBackdropState?,
     interactive: Boolean
 ): Modifier =
     if (!interactive) {
-        this.glassBody(shape, tint, fillAlpha, null)
+        this.glassBody(shape, tint, fillAlpha, ambient?.backdrop, null)
     } else {
         // Same physics as the library demo / our back button: the glass inflates, drifts a little
         // towards the finger and a soft light follows the touch (clipped to the shape by drawBackdrop).
@@ -138,7 +145,7 @@ actual fun Modifier.platformLiquidGlass(
             val scope = rememberCoroutineScope()
             val highlight = remember(scope) { InteractiveHighlight(scope) }
             Modifier
-                .glassBody(shape, tint, fillAlpha) {
+                .glassBody(shape, tint, fillAlpha, ambient?.backdrop) {
                     val progress = highlight.pressProgress
                     if (progress > 0f) {
                         val grow = 6f.dp.toPx() * progress
@@ -153,34 +160,61 @@ actual fun Modifier.platformLiquidGlass(
         }
     }
 
+private fun Color.isChromatic(): Boolean =
+    maxOf(red, green, blue) - minOf(red, green, blue) > 0.12f
+
 private fun Modifier.glassBody(
     shape: Shape,
     tint: Color,
     fillAlpha: Float,
+    ambient: Backdrop?,
     layerBlock: (GraphicsLayerScope.() -> Unit)?
 ): Modifier =
-    this.drawBackdrop(
-        backdrop = emptyBackdrop(),
-        shape = { shape },
-        effects = {},
-        highlight = { Highlight.Default.copy(width = 1f.dp, alpha = 1f) },
-        shadow = { Shadow(radius = 14.dp, color = Color.Black.copy(alpha = 0.4f)) },
-        innerShadow = { InnerShadow(radius = 10.dp, color = Color.White.copy(alpha = 0.16f)) },
-        layerBlock = layerBlock,
-        onDrawSurface = {
-            if (tint.isSpecified) {
-                drawRect(tint.copy(alpha = (fillAlpha * 4f).coerceAtMost(0.92f)))
-            } else {
-                drawRect(Color.White.copy(alpha = fillAlpha))
+    if (ambient != null) {
+        // Kyant0 demo "LiquidButton" recipe: vibrancy + blur + lens over the ambient layer, with a
+        // hue-preserving tint. Lens strength scales down for small elements so chips don't smear.
+        this.drawBackdrop(
+            backdrop = ambient,
+            shape = { shape },
+            effects = {
+                vibrancy()
+                blur(2f.dp.toPx())
+                val k = (size.minDimension / 48f.dp.toPx()).coerceIn(0.35f, 1f)
+                lens(12f.dp.toPx() * k, 24f.dp.toPx() * k)
+            },
+            layerBlock = layerBlock,
+            onDrawSurface = {
+                if (tint.isSpecified) {
+                    if (tint.isChromatic()) drawRect(tint, blendMode = BlendMode.Hue)
+                    drawRect(tint.copy(alpha = (fillAlpha * 4f).coerceIn(0.35f, 0.8f)))
+                } else {
+                    drawRect(Color.White.copy(alpha = (fillAlpha * 0.8f).coerceAtMost(0.4f)))
+                }
             }
-            // Top sheen: a soft vertical light falloff gives the surface its "wet glass" depth.
-            drawRect(
-                Brush.verticalGradient(
-                    listOf(Color.White.copy(alpha = if (tint.isSpecified) 0.12f else 0.16f), Color.Transparent)
+        )
+    } else {
+        this.drawBackdrop(
+            backdrop = emptyBackdrop(),
+            shape = { shape },
+            effects = {},
+            highlight = { Highlight.Default.copy(width = 1f.dp, alpha = 1f) },
+            shadow = { Shadow(radius = 14.dp, color = Color.Black.copy(alpha = 0.4f)) },
+            innerShadow = { InnerShadow(radius = 10.dp, color = Color.White.copy(alpha = 0.16f)) },
+            layerBlock = layerBlock,
+            onDrawSurface = {
+                if (tint.isSpecified) {
+                    drawRect(tint.copy(alpha = (fillAlpha * 4f).coerceAtMost(0.92f)))
+                } else {
+                    drawRect(Color.White.copy(alpha = fillAlpha))
+                }
+                drawRect(
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = if (tint.isSpecified) 0.12f else 0.16f), Color.Transparent)
+                    )
                 )
-            )
-        }
-    )
+            }
+        )
+    }
 
 @Composable
 actual fun LiquidGlassIconButton(
@@ -190,12 +224,14 @@ actual fun LiquidGlassIconButton(
     content: @Composable () -> Unit
 ) {
     val glass = LocalGlassSettings.current
+    val ambient = LocalAmbientBackdrop.current
+    val sampled = if (ambient != null) rememberCombinedBackdrop(ambient.backdrop, state.backdrop) else state.backdrop
     val animationScope = rememberCoroutineScope()
     val interactiveHighlight = remember(animationScope) { InteractiveHighlight(animationScope = animationScope) }
     Box(
         modifier = modifier
             .drawBackdrop(
-                backdrop = state.backdrop,
+                backdrop = sampled,
                 shape = { CircleShape },
                 effects = {
                     vibrancy()
@@ -274,5 +310,50 @@ private fun BlurStrip(state: GlassBackdropState, radius: Dp, fadeEnd: Float) {
                 highlight = null,
                 shadow = null
             )
+    )
+}
+
+@Composable
+actual fun PlatformLiquidToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    accent: Color,
+    ambient: GlassBackdropState?,
+    modifier: Modifier
+) {
+    val checkedState = rememberUpdatedState(checked)
+    val changeState = rememberUpdatedState(onCheckedChange)
+    val selected = remember { { checkedState.value } }
+    val onSelect = remember { { value: Boolean -> changeState.value(value) } }
+    DemoLiquidToggle(
+        selected = selected,
+        onSelect = onSelect,
+        backdrop = ambient?.backdrop ?: emptyBackdrop(),
+        accentColor = accent,
+        modifier = modifier
+    )
+}
+
+@Composable
+actual fun PlatformLiquidSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    accent: Color,
+    ambient: GlassBackdropState?,
+    modifier: Modifier
+) {
+    val valueState = rememberUpdatedState(value)
+    val changeState = rememberUpdatedState(onValueChange)
+    val current = remember { { valueState.value } }
+    val onChange = remember { { v: Float -> changeState.value(v) } }
+    DemoLiquidSlider(
+        value = current,
+        onValueChange = onChange,
+        valueRange = valueRange,
+        visibilityThreshold = (valueRange.endInclusive - valueRange.start) / 1000f,
+        backdrop = ambient?.backdrop ?: emptyBackdrop(),
+        accentColor = accent,
+        modifier = modifier
     )
 }

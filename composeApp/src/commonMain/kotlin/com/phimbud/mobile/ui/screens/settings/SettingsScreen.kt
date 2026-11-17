@@ -1,5 +1,9 @@
 package com.phimbud.mobile.ui.screens.settings
 
+import androidx.compose.runtime.CompositionLocalProvider
+import com.phimbud.mobile.ui.components.rememberGlassBackdropState
+import com.phimbud.mobile.ui.components.glassBackdropSource
+import com.phimbud.mobile.ui.components.LocalAmbientBackdrop
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -68,7 +72,6 @@ fun SettingsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(NetflixBlack)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -140,18 +143,10 @@ fun SettingsScreen(
                     fontWeight = FontWeight.Medium
                 )
             }
-            val interaction = remember { MutableInteractionSource() }
-            Slider(
+            LiquidSlider(
                 value = settings.intensity,
                 onValueChange = { v -> controller.update { it.copy(intensity = v) } },
                 valueRange = GlassSettings.MIN_INTENSITY..GlassSettings.MAX_INTENSITY,
-                colors = SliderDefaults.colors(
-                    thumbColor = settings.accent.color,
-                    activeTrackColor = settings.accent.color,
-                    inactiveTrackColor = Color.Gray.copy(alpha = 0.4f)
-                ),
-                interactionSource = interaction,
-                thumb = { LiquidSliderThumb(interaction) },
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -202,17 +197,24 @@ fun SettingsScreen(
 /** Live preview: sample controls over a colourful backdrop so every setting is visible at once. */
 @Composable
 private fun GlassPreview(settings: GlassSettings) {
+    val previewBackdrop = rememberGlassBackdropState()
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(150.dp)
             .clip(RoundedCornerShape(28.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(Color(0xFF7A1F3D), Color(0xFF1B2A6B), Color(0xFF0F6B5E))
-                )
-            )
     ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF7A1F3D), Color(0xFF1B2A6B), Color(0xFF0F6B5E))
+                    )
+                )
+                .glassBackdropSource(previewBackdrop)
+        )
+        CompositionLocalProvider(LocalAmbientBackdrop provides previewBackdrop) {
         Row(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -252,6 +254,7 @@ private fun GlassPreview(settings: GlassSettings) {
                     tint = Color.White
                 )
             }
+        }
         }
         Text(
             text = "Xem trước",

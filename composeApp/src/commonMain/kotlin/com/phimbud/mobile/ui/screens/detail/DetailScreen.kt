@@ -1,5 +1,7 @@
 package com.phimbud.mobile.ui.screens.detail
 
+import com.phimbud.mobile.ui.components.heroZoom
+import com.phimbud.mobile.ui.components.entrance
 import com.phimbud.mobile.ui.components.LiquidGlassIconButton
 import com.phimbud.mobile.ui.components.glassBackdropSource
 import com.phimbud.mobile.ui.components.rememberGlassBackdropState
@@ -107,7 +109,6 @@ fun DetailScreen(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(NetflixBlack)
     ) {
         val isWideScreen = maxWidth >= 720.dp
         val horizontalMargin = if (isWideScreen) 44.dp else 16.dp
@@ -162,7 +163,7 @@ fun DetailScreen(
                                 model = detail.backdropUrl ?: detail.posterUrl,
                                 contentDescription = detail.displayTitle,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize().heroZoom()
                             )
 
                             Box(
@@ -175,7 +176,7 @@ fun DetailScreen(
                     }
 
                     item(key = "detail_metadata", contentType = "metadata") {
-                        Column(modifier = Modifier.padding(horizontal = horizontalMargin)) {
+                        Column(modifier = Modifier.entrance(1).padding(horizontal = horizontalMargin)) {
                             Text(
                                 text = detail.displayTitle,
                                 color = NetflixTextPrimary,
@@ -553,12 +554,14 @@ fun DetailScreen(
                     if (detail.relatedTitles.isNotEmpty()) {
                         item(key = "detail_related", contentType = "related_row") {
                             Spacer(modifier = Modifier.height(16.dp))
-                            MovieRow(
-                                title = "Nội dung tương tự",
-                                movies = detail.relatedTitles,
-                                onMovieClick = onRelatedMovieClick,
-                                isWideScreen = isWideScreen
-                            )
+                            Box(Modifier.entrance(3)) {
+                                MovieRow(
+                                    title = "Nội dung tương tự",
+                                    movies = detail.relatedTitles,
+                                    onMovieClick = onRelatedMovieClick,
+                                    isWideScreen = isWideScreen
+                                )
+                            }
                             Spacer(modifier = Modifier.height(40.dp))
                         }
                     }

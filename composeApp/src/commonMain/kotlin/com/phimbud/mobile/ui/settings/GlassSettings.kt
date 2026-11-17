@@ -50,9 +50,10 @@ class GlassSettingsController(platformContext: PlatformContext) {
         private set
 
     fun update(transform: (GlassSettings) -> GlassSettings) {
-        val next = transform(settings).normalized()
+        val previous = settings
+        val next = transform(previous).normalized()
         settings = next
-        save(next)
+        save(previous, next)
     }
 
     fun reset() = update { GlassSettings() }
@@ -70,12 +71,12 @@ class GlassSettingsController(platformContext: PlatformContext) {
         ).normalized()
     }
 
-    private fun save(value: GlassSettings) {
-        store.putString(KEY_ENABLED, value.enabled.toString())
-        store.putString(KEY_INTENSITY, value.intensity.toString())
-        store.putString(KEY_ACCENT, value.accent.name)
-        store.putString(KEY_PRESS, value.pressPhysics.toString())
-        store.putString(KEY_REFRACTION, value.refraction.toString())
+    private fun save(previous: GlassSettings, value: GlassSettings) {
+        if (value.enabled != previous.enabled) store.putString(KEY_ENABLED, value.enabled.toString())
+        if (value.intensity != previous.intensity) store.putString(KEY_INTENSITY, value.intensity.toString())
+        if (value.accent != previous.accent) store.putString(KEY_ACCENT, value.accent.name)
+        if (value.pressPhysics != previous.pressPhysics) store.putString(KEY_PRESS, value.pressPhysics.toString())
+        if (value.refraction != previous.refraction) store.putString(KEY_REFRACTION, value.refraction.toString())
     }
 
     private companion object {

@@ -42,9 +42,10 @@ private fun Modifier.settingsAwareGlass(
     val alpha = (fillAlpha * settings.intensity).coerceIn(0f, 0.5f)
     val enabled = settings.enabled
     val physics = settings.pressPhysics
-    remember(shape, effectiveTint, alpha, enabled, interactive, physics) {
+    val ambient = if (settings.refraction) LocalAmbientBackdrop.current else null
+    remember(shape, effectiveTint, alpha, enabled, interactive, physics, ambient) {
         if (enabled) {
-            Modifier.platformLiquidGlass(shape, effectiveTint, alpha, interactive && physics)
+            Modifier.platformLiquidGlass(shape, effectiveTint, alpha, ambient, interactive && physics)
         } else {
             // Flat fallback: plain translucent fill, no rim / shadow / glow.
             Modifier.background(

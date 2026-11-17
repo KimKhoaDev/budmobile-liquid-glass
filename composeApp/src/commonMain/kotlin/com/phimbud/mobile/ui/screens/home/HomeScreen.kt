@@ -98,7 +98,6 @@ fun HomeScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(NetflixBlack)
     ) {
         when (val state = uiState) {
             is HomeUiState.Loading -> {

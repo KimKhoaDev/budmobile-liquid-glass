@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
@@ -52,6 +53,8 @@ expect fun Modifier.platformLiquidGlass(
     shape: Shape,
     tint: Color = Color.Unspecified,
     fillAlpha: Float = 0.14f,
+    /** Ambient layer this surface refracts (Android). Null = decorative glass that samples nothing. */
+    ambient: GlassBackdropState? = null,
     /** Adds press physics: inflate, finger-following drift and a touch-tracking light (Android). */
     interactive: Boolean = false
 ): Modifier
@@ -80,4 +83,31 @@ expect fun ProgressiveTopBlur(
     state: GlassBackdropState,
     height: Dp,
     modifier: Modifier = Modifier
+)
+
+/**
+ * Colourful ambient layer (see AuroraBackground) that glass controls refract, exactly like the
+ * wallpaper in the Kyant0 demo. Null where nothing suitable sits behind (e.g. over video).
+ */
+val LocalAmbientBackdrop = staticCompositionLocalOf<GlassBackdropState?> { null }
+
+/** Platform switch: demo-style liquid toggle on Android, spring-animated fallback elsewhere. */
+@Composable
+expect fun PlatformLiquidToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    accent: Color,
+    ambient: GlassBackdropState?,
+    modifier: Modifier
+)
+
+/** Platform slider: demo-style liquid slider on Android, Material slider with glass thumb elsewhere. */
+@Composable
+expect fun PlatformLiquidSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    accent: Color,
+    ambient: GlassBackdropState?,
+    modifier: Modifier
 )
