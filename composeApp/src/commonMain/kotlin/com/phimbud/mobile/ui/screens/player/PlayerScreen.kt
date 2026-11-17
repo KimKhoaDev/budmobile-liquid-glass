@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.phimbud.mobile.ui.screens.player
 
 import com.phimbud.mobile.ui.components.LiquidSliderThumb

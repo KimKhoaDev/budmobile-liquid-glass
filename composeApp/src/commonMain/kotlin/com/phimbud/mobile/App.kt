@@ -1,5 +1,6 @@
 package com.phimbud.mobile
 
+import androidx.savedstate.read
 import com.phimbud.mobile.ui.components.LocalAmbientBackdrop
 import com.phimbud.mobile.ui.components.AuroraBackground
 import androidx.compose.ui.graphics.Color
@@ -353,7 +354,7 @@ fun App(
                         scaleOut(targetScale = 0.92f, animationSpec = tween(280, easing = EaseInCubic))
                 }
             ) { backStackEntry ->
-                val fid = backStackEntry.arguments?.getString("fid").orEmpty()
+                val fid = backStackEntry.arguments?.read { getStringOrNull("fid") }.orEmpty()
                 val detailVm = viewModel(key = fid) { DetailViewModel(repository, fid) }
 
                 DetailScreen(
@@ -401,7 +402,7 @@ fun App(
                         onPlayerScreenActiveChanged(false)
                     }
                 }
-                val watchFid = backStackEntry.arguments?.getString("watchFid").orEmpty()
+                val watchFid = backStackEntry.arguments?.read { getStringOrNull("watchFid") }.orEmpty()
                 val playerVm = viewModel(key = watchFid) { PlayerViewModel(repository, watchFid) }
 
                 // Over video there is nothing to refract, so glass falls back to decorative mode.

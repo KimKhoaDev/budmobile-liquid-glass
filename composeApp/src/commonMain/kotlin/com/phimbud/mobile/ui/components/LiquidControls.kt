@@ -166,6 +166,7 @@ fun LiquidSlider(
     PlatformLiquidSlider(value, onValueChange, valueRange, accent, LocalAmbientBackdrop.current, modifier)
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun FallbackLiquidSlider(
     value: Float,

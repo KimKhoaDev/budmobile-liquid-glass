@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.settings
 
+import com.phimbud.mobile.ui.components.LiquidSlider
 import androidx.compose.runtime.CompositionLocalProvider
 import com.phimbud.mobile.ui.components.rememberGlassBackdropState
 import com.phimbud.mobile.ui.components.glassBackdropSource
