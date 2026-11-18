@@ -60,11 +60,12 @@ Toàn bộ giao diện ứng dụng (Android & iOS) phải tuân thủ nghiêm n
 
 ---
 
-## 4. Tự động phát hành (Auto Release)
+## 4. CI & tự động phát hành (một workflow duy nhất)
 
-Workflow `.github/workflows/release.yml` tự build và đăng GitHub Release (APK Android + bộ cài `.exe`/`.msi` Windows):
+`.github/workflows/build.yml` ("Build & Release") chạy mọi job trong mỗi lần push lên `main`/`master` (không job nào bị bỏ qua):
 
-- **Cách phát hành**: tăng `packageVersion` trong `composeApp/build.gradle.kts` rồi push lên `main` → tự tạo tag `v<phiên bản>` và Release kèm ghi chú tự sinh.
-- Hoặc push tag `v*` thủ công, hoặc chạy tay (`workflow_dispatch`, có tuỳ chọn `force` / `prerelease`).
-- Phiên bản đã có tag sẽ được bỏ qua nên push bình thường không tạo Release trùng.
-- iOS vẫn build thủ công qua `build-ios.yml`.
+1. `version` → xác định tag; 2. `compile-android` / `compile-desktop` → kiểm tra biên dịch + báo lỗi dạng annotation; 3. `build-android` → APK release (minify); 4. `build-windows` → `.exe` + `.msi`; 5. `release` → đăng GitHub Release kèm toàn bộ file.
+
+- Tăng `packageVersion` trong `composeApp/build.gradle.kts` → Release chính thức `v<phiên bản>`.
+- Cùng phiên bản đã có tag → tự tạo pre-release `v<phiên bản>-build.<số lần chạy>` (vẫn có APK/bộ cài mới).
+- Push tag `v*` hoặc chạy tay (`workflow_dispatch`) cũng được. iOS không còn workflow.
