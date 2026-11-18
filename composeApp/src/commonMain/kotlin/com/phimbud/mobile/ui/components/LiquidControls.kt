@@ -53,7 +53,7 @@ fun Modifier.liquidPress(pressedScale: Float = 1.07f): Modifier = composed {
             if (!physics) return@pointerInput
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                scope.launch { scale.animateTo(pressedScale, spring(dampingRatio = 0.6f, stiffness = 1500f)) }
+                scope.launch { scale.animateTo(pressedScale, spring(dampingRatio = 0.55f, stiffness = 700f)) }
                 val slop = viewConfiguration.touchSlop * 2f
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -61,7 +61,7 @@ fun Modifier.liquidPress(pressedScale: Float = 1.07f): Modifier = composed {
                     if (!change.pressed) break
                     if ((change.position - down.position).getDistance() > slop) break
                 }
-                scope.launch { scale.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = 700f)) }
+                scope.launch { scale.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = 380f)) }
             }
         }
 }
@@ -77,7 +77,7 @@ fun LiquidSliderThumb(
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (dragged || pressed) 1.5f else 1f,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = 900f),
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = 380f),
         label = "liquidThumbScale"
     )
     Box(
@@ -109,12 +109,12 @@ internal fun FallbackLiquidToggle(
     val inset = 3.dp
     val thumbWidth by animateDpAsState(
         targetValue = if (pressed) 38.dp else 28.dp,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 1000f),
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 500f),
         label = "toggleThumbWidth"
     )
     val thumbX by animateDpAsState(
         targetValue = if (checked) trackWidth - inset - thumbWidth else inset,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 900f),
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 450f),
         label = "toggleThumbX"
     )
     val trackColor by animateColorAsState(

@@ -59,7 +59,7 @@ fun GlassSegmentedControl(
         val segmentWidth = maxWidth / options.size
         val indicatorOffset by animateDpAsState(
             targetValue = segmentWidth * selectedIndex,
-            animationSpec = spring(dampingRatio = 0.78f, stiffness = 1000f),
+            animationSpec = spring(dampingRatio = 0.72f, stiffness = 520f),
             label = "segmentOffset"
         )
         Box(
@@ -74,7 +74,7 @@ fun GlassSegmentedControl(
                 val selected = index == selectedIndex
                 val textColor by animateColorAsState(
                     targetValue = if (selected) Color.White else NetflixTextSecondary,
-                    animationSpec = tween(110),
+                    animationSpec = tween(160),
                     label = "segmentText"
                 )
                 Box(
@@ -113,7 +113,7 @@ fun GlassFilterChip(
     val accent = LocalGlassSettings.current.accent.color
     val background by animateColorAsState(
         targetValue = if (selected) accent.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.10f),
-        animationSpec = tween(110),
+        animationSpec = tween(160),
         label = "chipBackground"
     )
     Text(
