@@ -3,6 +3,7 @@ package com.phimbud.mobile.ui.screens.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.phimbud.mobile.core.model.SearchItem
+import com.phimbud.mobile.core.platform.KeyValueStore
 import com.phimbud.mobile.core.repository.PhimBudRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,6 +23,12 @@ class SearchViewModel(private val repository: PhimBudRepository) : ViewModel() {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val store = KeyValueStore(repository.platformContext, STORE_NAME)
+    private val _recent = MutableStateFlow(loadRecent())
+
+    /** Most recent searches first, persisted across launches. */
+    val recent: StateFlow<List<String>> = _recent.asStateFlow()
+
     private var searchJob: Job? = null
 
     init {
@@ -39,6 +46,38 @@ class SearchViewModel(private val repository: PhimBudRepository) : ViewModel() {
         }
     }
 
+    /** Remembers the current query (called on keyboard "search" and when a result is opened). */
+    fun saveCurrentQuery() {
+        val q = _query.value.trim()
+        if (q.length < 2) return
+        val next = (listOf(q) + _recent.value.filterNot { it.equals(q, ignoreCase = true) }).take(MAX_RECENT)
+        _recent.value = next
+        persistRecent(next)
+    }
+
+    fun removeRecent(query: String) {
+        val next = _recent.value.filterNot { it == query }
+        _recent.value = next
+        persistRecent(next)
+    }
+
+    fun clearRecent() {
+        _recent.value = emptyList()
+        persistRecent(emptyList())
+    }
+
+    private fun loadRecent(): List<String> =
+        store.getString(KEY_RECENT)
+            ?.split('\n')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.take(MAX_RECENT)
+            .orEmpty()
+
+    private fun persistRecent(list: List<String>) {
+        store.putString(KEY_RECENT, list.joinToString("\n"))
+    }
+
     private suspend fun executeSearch(q: String) {
         val showSpinner = !repository.hasSearchIndex()
         if (showSpinner) {
@@ -52,5 +91,11 @@ class SearchViewModel(private val repository: PhimBudRepository) : ViewModel() {
                 _isLoading.value = false
             }
         }
+    }
+
+    private companion object {
+        const val STORE_NAME = "phimbud_search"
+        const val KEY_RECENT = "recent_queries"
+        const val MAX_RECENT = 8
     }
 }

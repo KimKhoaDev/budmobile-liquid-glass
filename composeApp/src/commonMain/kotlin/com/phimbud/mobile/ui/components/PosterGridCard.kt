@@ -61,6 +61,26 @@ fun PosterGridCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isWideScreen: Boolean = false
+) = PosterTile(
+    posterUrl = movie.posterUrl,
+    title = movie.displayTitle,
+    year = movie.year,
+    rating = movie.imdbRating,
+    onClick = onClick,
+    modifier = modifier,
+    isWideScreen = isWideScreen
+)
+
+/** Generic poster tile (any data source): see [PosterGridCard] for the performance notes. */
+@Composable
+fun PosterTile(
+    posterUrl: String?,
+    title: String,
+    year: Int,
+    rating: Double?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isWideScreen: Boolean = false
 ) {
     val shape = RoundedCornerShape(if (isWideScreen) 12.dp else 16.dp)
 
@@ -91,16 +111,16 @@ fun PosterGridCard(
                 .background(NetflixCard)
                 .border(0.75.dp, PosterRimBrush, shape)
         ) {
-            if (!movie.posterUrl.isNullOrBlank()) {
+            if (!posterUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = movie.posterUrl,
-                    contentDescription = movie.displayTitle,
+                    model = posterUrl,
+                    contentDescription = title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
                 Text(
-                    text = movie.displayTitle,
+                    text = title,
                     color = NetflixTextPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
@@ -113,7 +133,6 @@ fun PosterGridCard(
                 )
             }
 
-            val rating = movie.imdbRating
             if (rating != null && rating > 0) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -144,16 +163,16 @@ fun PosterGridCard(
 
         Spacer(Modifier.height(6.dp))
         Text(
-            text = movie.displayTitle,
+            text = title,
             color = NetflixTextPrimary,
             fontSize = if (isWideScreen) 14.sp else 12.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        if (movie.year > 0) {
+        if (year > 0) {
             Text(
-                text = movie.year.toString(),
+                text = year.toString(),
                 color = NetflixTextSecondary,
                 fontSize = 11.sp,
                 maxLines = 1
