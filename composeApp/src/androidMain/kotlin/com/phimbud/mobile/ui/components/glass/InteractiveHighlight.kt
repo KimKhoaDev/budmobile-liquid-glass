@@ -25,9 +25,9 @@ class InteractiveHighlight(
 ) {
 
     private val pressProgressAnimationSpec =
-        spring(0.5f, 300f, 0.001f)
+        spring(0.7f, 1200f, 0.001f)
     private val positionAnimationSpec =
-        spring(0.5f, 300f, Offset.VisibilityThreshold)
+        spring(0.7f, 900f, Offset.VisibilityThreshold)
 
     private val pressProgressAnimation =
         Animatable(0f, 0.001f)
