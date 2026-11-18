@@ -1,0 +1,217 @@
+name: Build & Release
+
+# One workflow, every job always runs (nothing is conditionally skipped):
+#   version          -> works out the release tag
+#   compile-*        -> fast Kotlin compile checks with error annotations (Android + Desktop)
+#   build-android    -> minified release APK
+#   build-windows    -> .exe + .msi installers
+#   release          -> publishes a GitHub Release with every file
+#
+# Tag rules: a NEW packageVersion (composeApp/build.gradle.kts) -> stable release  v<version>
+#            same version again                                 -> pre-release     v<version>-build.<run>
+#            pushing a tag v*                                   -> that exact tag
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: v
+        name: Work out version, tag and release type
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRE=false
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+          else
+            VERSION="$(grep -oP 'packageVersion\s*=\s*"\K[^"]+' composeApp/build.gradle.kts | head -n1)"
+            [[ -n "${VERSION}" ]] || { echo "::error::packageVersion not found in composeApp/build.gradle.kts"; exit 1; }
+            TAG="v${VERSION}"
+            if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+              TAG="v${VERSION}-build.${{ github.run_number }}"
+              PRE=true
+            fi
+          fi
+          if [[ "${{ github.event.inputs.prerelease }}" == "true" ]]; then PRE=true; fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRE}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${TAG} (pre-release: ${PRE})"
+
+  compile-android:
+    name: Compile Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+      - name: Compile Android (Kotlin)
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :composeApp:compileDebugKotlinAndroid --continue --console=plain --stacktrace 2>&1 | tee build.log
+      - name: Report compiler errors as annotations
+        if: always()
+        run: python3 .github/scripts/report_errors.py build.log
+      - name: Fail if the build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
+
+  compile-desktop:
+    name: Compile Desktop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+      - name: Compile Desktop (Kotlin)
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :composeApp:compileKotlinDesktop --continue --console=plain --stacktrace 2>&1 | tee build.log
+      - name: Report compiler errors as annotations
+        if: always()
+        run: python3 .github/scripts/report_errors.py build.log
+      - name: Fail if the build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
+
+  build-android:
+    name: Build Android APK
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Stamp version into the APK
+        shell: bash
+        run: |
+          sed -i "s/versionName = \".*\"/versionName = \"${{ needs.version.outputs.version }}\"/" composeApp/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = ${{ github.run_number }}/" composeApp/build.gradle.kts
+
+      - name: Build release APK (minified)
+        run: |
+          chmod +x gradlew
+          ./gradlew :composeApp:assembleRelease --console=plain
+
+      - name: Name the APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          APK="$(ls composeApp/build/outputs/apk/release/*.apk | head -n1)"
+          cp "$APK" "dist/PhimBud-${{ needs.version.outputs.tag }}-android.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows installers
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure WiX Toolset (needed for .exe / .msi installers)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue) -and -not (Test-Path "$env:WIX\bin\candle.exe")) {
+            choco install wixtoolset -y --no-progress
+          }
+
+      - name: Build installers
+        shell: bash
+        run: ./gradlew :composeApp:packageExe :composeApp:packageMsi --console=plain
+
+      - name: Name the installers
+        shell: bash
+        run: |
+          mkdir -p dist
+          for f in composeApp/build/release-windows-*/main/exe/*.exe; do cp "$f" "dist/PhimBud-${{ needs.version.outputs.tag }}-windows-setup.exe"; done
+          for f in composeApp/build/release-windows-*/main/msi/*.msi; do cp "$f" "dist/PhimBud-${{ needs.version.outputs.tag }}-windows.msi"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [version, compile-android, compile-desktop, build-android, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lh dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: PhimBud ${{ needs.version.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.version.outputs.prerelease != 'true' }}
+          fail_on_unmatched_files: true
+          files: dist/*
