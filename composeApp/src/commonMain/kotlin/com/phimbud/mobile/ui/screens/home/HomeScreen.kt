@@ -65,13 +65,32 @@ import com.phimbud.mobile.ui.theme.NetflixRed
 import com.phimbud.mobile.ui.theme.NetflixTextPrimary
 import com.phimbud.mobile.ui.theme.NetflixTextSecondary
 
-private val HomeHeaderGradient = Brush.verticalGradient(
-    colors = listOf(
-        NetflixBlack.copy(alpha = 0.92f),
-        NetflixBlack.copy(alpha = 0.68f),
-        Color.Transparent
-    )
-)
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import com.phimbud.mobile.ui.components.GlassBackdropState
+import com.phimbud.mobile.ui.components.GlassFilterChip
+import com.phimbud.mobile.ui.components.LiquidGlassIconButton
+import com.phimbud.mobile.ui.components.ProgressiveTopBlur
+import com.phimbud.mobile.ui.components.glassBackdropSource
+import com.phimbud.mobile.ui.components.rememberGlassBackdropState
+import com.phimbud.mobile.ui.settings.LocalGlassSettings
+
+private val BrandRowHeight = 56.dp
+private val PillsRowHeight = 48.dp
+private val SubRowHeight = 44.dp
 
 @Composable
 fun HomeScreen(
@@ -91,37 +110,48 @@ fun HomeScreen(
     val top10Lists by viewModel.top10Lists.collectAsState()
     val isTop10Loading by viewModel.isTop10Loading.collectAsState()
 
+    val backdrop = rememberGlassBackdropState()
+    val accent = LocalGlassSettings.current.accent.color
+    val showBrand = showBrandHeader && !isWideScreen
+    val showSubRow = filterMode != HomeFilterMode.ALL
+
+    val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val headerHeight = (if (showBrand) BrandRowHeight else 0.dp) +
+        PillsRowHeight +
+        (if (showSubRow) SubRowHeight else 0.dp) +
+        (if (isWideScreen) 14.dp else 0.dp)
+    val contentTop = topInset + headerHeight
+    val blurHeight by animateDpAsState(
+        targetValue = contentTop + 20.dp,
+        animationSpec = spring(stiffness = 500f),
+        label = "homeBlurHeight"
+    )
+
     PlatformBackHandler(enabled = filterMode != HomeFilterMode.ALL) {
         viewModel.selectFilterMode(HomeFilterMode.ALL)
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
         when (val state = uiState) {
-            is HomeUiState.Loading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = NetflixRed)
-                }
-            }
+            is HomeUiState.Loading -> HomeSkeleton(isWideScreen = isWideScreen, contentTop = contentTop)
+
             is HomeUiState.Error -> {
                 Column(
-                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    modifier = Modifier.fillMaxSize().padding(top = contentTop).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(text = state.message, color = NetflixTextSecondary, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = { viewModel.loadHomeFeed() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        modifier = Modifier.liquidGlassPress(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
-                    ) {
-                        Text("Thử lại")
-                    }
+                    Text(
+                        text = state.message,
+                        color = NetflixTextSecondary,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    GlassActionButton(label = "Thử lại", onClick = { viewModel.loadHomeFeed() })
                 }
             }
+
             is HomeUiState.Success -> {
                 val feed = state.feed
 
@@ -129,7 +159,7 @@ fun HomeScreen(
                     val heroMovie = feed.trending.firstOrNull() ?: feed.movies.firstOrNull()
 
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop),
                         contentPadding = PaddingValues(bottom = LocalBottomOverlayInset.current)
                     ) {
                         if (heroMovie != null) {
@@ -145,7 +175,7 @@ fun HomeScreen(
                             }
                         } else {
                             item(key = "top_pad") {
-                                Spacer(modifier = Modifier.height(if (isWideScreen) 68.dp else 120.dp))
+                                Spacer(modifier = Modifier.height(contentTop))
                             }
                         }
 
@@ -271,11 +301,11 @@ fun HomeScreen(
 
                     if (isTop10Loading && activeList.isEmpty()) {
                         Column(
-                            modifier = Modifier.fillMaxSize().padding(24.dp),
+                            modifier = Modifier.fillMaxSize().padding(top = contentTop).padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            CircularProgressIndicator(color = NetflixRed)
+                            CircularProgressIndicator(color = accent)
                             Spacer(modifier = Modifier.height(14.dp))
                             Text(
                                 text = "Đang cập nhật Bảng xếp hạng Top 10 $regionLabel...",
@@ -285,7 +315,7 @@ fun HomeScreen(
                         }
                     } else if (activeList.isEmpty()) {
                         Column(
-                            modifier = Modifier.fillMaxSize().padding(24.dp),
+                            modifier = Modifier.fillMaxSize().padding(top = contentTop).padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
@@ -295,19 +325,13 @@ fun HomeScreen(
                                 fontSize = 14.sp
                             )
                             Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = { viewModel.loadTop10(forceRefresh = true) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                                modifier = Modifier.liquidGlassPress(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
-                            ) {
-                                Text("Tải lại")
-                            }
+                            GlassActionButton(label = "Tải lại", onClick = { viewModel.loadTop10(forceRefresh = true) })
                         }
                     } else {
                         val top1Movie = activeList.first()
 
                         LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop),
                             contentPadding = PaddingValues(bottom = LocalBottomOverlayInset.current)
                         ) {
                             item(key = "top10_hero_${top1Movie.fid}", contentType = "hero") {
@@ -361,17 +385,17 @@ fun HomeScreen(
                                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            NetflixCategoryChip(
+                                            GlassFilterChip(
                                                 label = "Tất cả",
                                                 selected = top10Category == Top10CategoryFilter.ALL,
                                                 onClick = { viewModel.selectTop10Category(Top10CategoryFilter.ALL) }
                                             )
-                                            NetflixCategoryChip(
+                                            GlassFilterChip(
                                                 label = "Phim Bộ",
                                                 selected = top10Category == Top10CategoryFilter.SERIES,
                                                 onClick = { viewModel.selectTop10Category(Top10CategoryFilter.SERIES) }
                                             )
-                                            NetflixCategoryChip(
+                                            GlassFilterChip(
                                                 label = "Phim Lẻ",
                                                 selected = top10Category == Top10CategoryFilter.MOVIES,
                                                 onClick = { viewModel.selectTop10Category(Top10CategoryFilter.MOVIES) }
@@ -407,174 +431,186 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
+        }
 
-                // Top Header Overlay (Logo + Search Button on Mobile, Netflix Filter Pills on all screens)
-                val headerHorizontalPadding = if (isWideScreen) 44.dp else 16.dp
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(HomeHeaderGradient)
-                        .statusBarsPadding()
-                        .padding(top = if (isWideScreen) 14.dp else 0.dp, bottom = 10.dp)
-                ) {
-                    if (showBrandHeader && !isWideScreen) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "PHIMBUD",
-                                color = NetflixRed,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.sp
-                            )
+        // Progressive blur: content (hero art, rows) melts into the status bar and header.
+        ProgressiveTopBlur(
+            state = backdrop,
+            height = blurHeight,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
 
-                            IconButton(onClick = onSearchClick) {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = "Tìm kiếm",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(26.dp)
-                                )
-                            }
-                        }
-                    }
+        HomeHeader(
+            showBrand = showBrand,
+            isWideScreen = isWideScreen,
+            filterMode = filterMode,
+            top10Category = top10Category,
+            showSubRow = showSubRow,
+            accent = accent,
+            backdrop = backdrop,
+            onSearchClick = onSearchClick,
+            onSelectMode = { viewModel.selectFilterMode(it) },
+            onSelectCategory = { viewModel.selectTop10Category(it) },
+            onNavigateToBrowse = onNavigateToBrowse,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+    }
+}
 
-                    // Primary Filter Chips: Tất cả | Top 10 Việt Nam | Top 10 Thế Giới (+ Phim Bộ | Phim Lẻ on mobile)
-                    val primaryPillsScroll = rememberScrollState()
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(primaryPillsScroll)
-                            .platformHorizontalDragScroll(primaryPillsScroll)
-                            .padding(horizontal = headerHorizontalPadding),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        NetflixFilterPill(
-                            label = "Tất cả",
-                            selected = filterMode == HomeFilterMode.ALL,
-                            onClick = { viewModel.selectFilterMode(HomeFilterMode.ALL) }
-                        )
-                        NetflixFilterPill(
-                            label = "🇻🇳 Top 10 Việt Nam",
-                            selected = filterMode == HomeFilterMode.TOP10_VIETNAM,
-                            onClick = { viewModel.selectFilterMode(HomeFilterMode.TOP10_VIETNAM) }
-                        )
-                        NetflixFilterPill(
-                            label = "🌍 Top 10 Thế Giới",
-                            selected = filterMode == HomeFilterMode.TOP10_GLOBAL,
-                            onClick = { viewModel.selectFilterMode(HomeFilterMode.TOP10_GLOBAL) }
-                        )
-                        if (!isWideScreen) {
-                            NetflixFilterPill(
-                                label = "Phim Bộ",
-                                selected = false,
-                                onClick = { onNavigateToBrowse(BrowseFilter(type = "show")) }
-                            )
-                            NetflixFilterPill(
-                                label = "Phim Lẻ",
-                                selected = false,
-                                onClick = { onNavigateToBrowse(BrowseFilter(type = "movie")) }
-                            )
-                        }
-                    }
-
-                    // Secondary Sub-Category Pills when viewing Top 10: Tất cả | Phim Bộ | Phim Lẻ
-                    AnimatedVisibility(
-                        visible = filterMode != HomeFilterMode.ALL,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
-                    ) {
-                        val subCategoryScroll = rememberScrollState()
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(subCategoryScroll)
-                                .platformHorizontalDragScroll(subCategoryScroll)
-                                .padding(start = headerHorizontalPadding, end = headerHorizontalPadding, top = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            NetflixCategoryChip(
-                                label = "Tất cả",
-                                selected = top10Category == Top10CategoryFilter.ALL,
-                                onClick = { viewModel.selectTop10Category(Top10CategoryFilter.ALL) }
-                            )
-                            NetflixCategoryChip(
-                                label = "Phim Bộ",
-                                selected = top10Category == Top10CategoryFilter.SERIES,
-                                onClick = { viewModel.selectTop10Category(Top10CategoryFilter.SERIES) }
-                            )
-                            NetflixCategoryChip(
-                                label = "Phim Lẻ",
-                                selected = top10Category == Top10CategoryFilter.MOVIES,
-                                onClick = { viewModel.selectTop10Category(Top10CategoryFilter.MOVIES) }
-                            )
-                        }
-                    }
+@Composable
+private fun HomeHeader(
+    showBrand: Boolean,
+    isWideScreen: Boolean,
+    filterMode: HomeFilterMode,
+    top10Category: Top10CategoryFilter,
+    showSubRow: Boolean,
+    accent: Color,
+    backdrop: GlassBackdropState,
+    onSearchClick: () -> Unit,
+    onSelectMode: (HomeFilterMode) -> Unit,
+    onSelectCategory: (Top10CategoryFilter) -> Unit,
+    onNavigateToBrowse: (BrowseFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val horizontal = if (isWideScreen) 44.dp else 16.dp
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(top = if (isWideScreen) 14.dp else 0.dp)
+    ) {
+        if (showBrand) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(BrandRowHeight)
+                    .padding(horizontal = horizontal),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "PHIMBUD",
+                    color = accent,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.5.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                LiquidGlassIconButton(state = backdrop, onClick = onSearchClick) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Tìm kiếm",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
+            }
+        }
+
+        val pillsScroll = rememberScrollState()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(PillsRowHeight)
+                .horizontalScroll(pillsScroll)
+                .platformHorizontalDragScroll(pillsScroll)
+                .padding(horizontal = horizontal),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            GlassFilterChip("Tất cả", filterMode == HomeFilterMode.ALL, { onSelectMode(HomeFilterMode.ALL) })
+            GlassFilterChip("🇻🇳 Top 10 Việt Nam", filterMode == HomeFilterMode.TOP10_VIETNAM, { onSelectMode(HomeFilterMode.TOP10_VIETNAM) })
+            GlassFilterChip("🌍 Top 10 Thế Giới", filterMode == HomeFilterMode.TOP10_GLOBAL, { onSelectMode(HomeFilterMode.TOP10_GLOBAL) })
+            if (!isWideScreen) {
+                GlassFilterChip("Phim Bộ", false, { onNavigateToBrowse(BrowseFilter(type = "show")) })
+                GlassFilterChip("Phim Lẻ", false, { onNavigateToBrowse(BrowseFilter(type = "movie")) })
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showSubRow,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            val subScroll = rememberScrollState()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(SubRowHeight)
+                    .horizontalScroll(subScroll)
+                    .platformHorizontalDragScroll(subScroll)
+                    .padding(horizontal = horizontal),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GlassFilterChip("Tất cả", top10Category == Top10CategoryFilter.ALL, { onSelectCategory(Top10CategoryFilter.ALL) })
+                GlassFilterChip("Phim Bộ", top10Category == Top10CategoryFilter.SERIES, { onSelectCategory(Top10CategoryFilter.SERIES) })
+                GlassFilterChip("Phim Lẻ", top10Category == Top10CategoryFilter.MOVIES, { onSelectCategory(Top10CategoryFilter.MOVIES) })
             }
         }
     }
 }
 
 @Composable
-private fun NetflixFilterPill(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        color = Color.Transparent,
-        shape = RoundedCornerShape(50),
-        modifier = Modifier.liquidGlassPress(
-            RoundedCornerShape(50),
-            tint = if (selected) NetflixRed else Color.Unspecified,
-            fillAlpha = if (selected) 0.22f else 0.12f
-        )
-    ) {
-        Text(
-            text = label,
-            color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-            softWrap = false,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-        )
-    }
+private fun GlassActionButton(label: String, onClick: () -> Unit) {
+    Text(
+        text = label,
+        color = Color.White,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier
+            .liquidGlassPress(RoundedCornerShape(50), tint = NetflixRed, fillAlpha = 0.22f)
+            .clip(RoundedCornerShape(50))
+            .clickable(interactionSource = null, indication = null, onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 11.dp)
+    )
 }
 
+/** Skeleton that mirrors the real layout (hero + rows) so the screen never flashes a bare spinner. */
 @Composable
-private fun NetflixCategoryChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        color = Color.Transparent,
-        shape = RoundedCornerShape(50),
-        modifier = Modifier.liquidGlassPress(
-            RoundedCornerShape(50),
-            tint = if (selected) Color.White else Color.Unspecified,
-            fillAlpha = if (selected) 0.23f else 0.12f
+private fun HomeSkeleton(isWideScreen: Boolean, contentTop: Dp) {
+    val pulse = rememberInfiniteTransition(label = "homeSkeleton").animateFloat(
+        initialValue = 0.05f,
+        targetValue = 0.13f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "homeSkeletonPulse"
+    )
+    val horizontal = if (isWideScreen) 44.dp else 16.dp
+    Column(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(if (isWideScreen) 540.dp else 450.dp)
+                .drawBehind { drawRect(Color.White.copy(alpha = pulse.value * 0.7f)) }
         )
-    ) {
-        Text(
-            text = label,
-            color = if (selected) Color.Black else NetflixTextPrimary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            softWrap = false,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-        )
+        Spacer(Modifier.height(18.dp))
+        repeat(2) {
+            Box(
+                Modifier
+                    .padding(horizontal = horizontal)
+                    .width(150.dp)
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(50))
+                    .drawBehind { drawRect(Color.White.copy(alpha = pulse.value)) }
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.padding(horizontal = horizontal),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                repeat(if (isWideScreen) 7 else 3) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .drawBehind { drawRect(Color.White.copy(alpha = pulse.value)) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+        }
     }
 }
