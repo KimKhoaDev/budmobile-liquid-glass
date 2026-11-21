@@ -49,6 +49,7 @@ fun GlassSegmentedControl(
     modifier: Modifier = Modifier
 ) {
     val accent = LocalGlassSettings.current.accent.color
+    val tick = rememberHapticTick()
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
@@ -82,7 +83,10 @@ fun GlassSegmentedControl(
                         .weight(1f)
                         .fillMaxHeight()
                         .clip(PillShape)
-                        .clickable(interactionSource = null, indication = null) { onSelect(index) },
+                        .clickable(interactionSource = null, indication = null) {
+                            if (index != selectedIndex) tick()
+                            onSelect(index)
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -111,6 +115,7 @@ fun GlassFilterChip(
     modifier: Modifier = Modifier
 ) {
     val accent = LocalGlassSettings.current.accent.color
+    val tick = rememberHapticTick()
     val background by animateColorAsState(
         targetValue = if (selected) accent.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.10f),
         animationSpec = tween(160),
@@ -128,7 +133,10 @@ fun GlassFilterChip(
             .clip(PillShape)
             .background(background)
             .border(0.75.dp, RimBrush, PillShape)
-            .clickable(interactionSource = null, indication = null, onClick = onClick)
+            .clickable(interactionSource = null, indication = null) {
+                tick()
+                onClick()
+            }
             .padding(horizontal = 15.dp, vertical = 8.dp)
     )
 }

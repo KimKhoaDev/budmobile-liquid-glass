@@ -1,5 +1,8 @@
 package com.phimbud.mobile.ui.screens.settings
 
+import com.phimbud.mobile.ui.settings.AuroraMode
+import com.phimbud.mobile.ui.components.rememberHapticTick
+import com.phimbud.mobile.ui.components.GlassSegmentedControl
 import com.phimbud.mobile.ui.components.LiquidSlider
 import androidx.compose.runtime.CompositionLocalProvider
 import com.phimbud.mobile.ui.components.rememberGlassBackdropState
@@ -174,6 +177,77 @@ fun SettingsScreen(
             }
         }
 
+        SettingsCard {
+            Text(
+                text = "Cực quang nền",
+                color = NetflixTextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "Ánh sáng màu phía sau giao diện, mọi nút kính đều khúc xạ nó",
+                color = NetflixTextSecondary,
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            GlassSegmentedControl(
+                options = AuroraMode.entries.map { it.label },
+                selectedIndex = settings.auroraMode.ordinal,
+                onSelect = { index -> controller.update { it.copy(auroraMode = AuroraMode.entries[index]) } }
+            )
+            if (settings.auroraMode != AuroraMode.OFF) {
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Độ sáng",
+                        color = NetflixTextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${(settings.auroraStrength * 100f).roundToInt()}%",
+                        color = NetflixTextSecondary,
+                        fontSize = 14.sp
+                    )
+                }
+                val auroraInteraction = remember { MutableInteractionSource() }
+                Slider(
+                    value = settings.auroraStrength,
+                    onValueChange = { v -> controller.update { it.copy(auroraStrength = v) } },
+                    valueRange = GlassSettings.MIN_AURORA_STRENGTH..GlassSettings.MAX_AURORA_STRENGTH,
+                    colors = SliderDefaults.colors(
+                        thumbColor = settings.accent.color,
+                        activeTrackColor = settings.accent.color,
+                        inactiveTrackColor = Color.Gray.copy(alpha = 0.4f)
+                    ),
+                    interactionSource = auroraInteraction,
+                    thumb = { LiquidSliderThumb(auroraInteraction) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                ToggleRow(
+                    title = "Cực quang chuyển động",
+                    subtitle = "Ánh sáng nền trôi chậm, tốn pin hơn một chút",
+                    checked = settings.auroraDrift,
+                    onCheckedChange = { v -> controller.update { it.copy(auroraDrift = v) } }
+                )
+            }
+        }
+
+        SettingsCard {
+            ToggleRow(
+                title = "Rung phản hồi",
+                subtitle = "Rung nhẹ khi bật tắt, đổi tab và chọn chip",
+                checked = settings.haptics,
+                onCheckedChange = { v -> controller.update { it.copy(haptics = v) } }
+            )
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -288,6 +362,7 @@ private fun ToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val tick = rememberHapticTick()
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -303,7 +378,7 @@ private fun ToggleRow(
             Text(text = subtitle, color = NetflixTextSecondary, fontSize = 12.sp)
         }
         Spacer(Modifier.width(12.dp))
-        LiquidToggle(checked = checked, onCheckedChange = onCheckedChange)
+        LiquidToggle(checked = checked, onCheckedChange = { tick(); onCheckedChange(it) })
     }
 }
 

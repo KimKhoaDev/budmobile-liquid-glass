@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.home
 
+import com.phimbud.mobile.ui.aurora.AuroraFromPoster
 import com.phimbud.mobile.ui.components.liquidPress
 import com.phimbud.mobile.ui.components.liquidGlassPress
 import com.phimbud.mobile.ui.components.liquidGlass
@@ -157,6 +158,7 @@ fun HomeScreen(
 
                 if (filterMode == HomeFilterMode.ALL) {
                     val heroMovie = feed.trending.firstOrNull() ?: feed.movies.firstOrNull()
+                    AuroraFromPoster(heroMovie?.posterUrl)
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop),
@@ -329,6 +331,7 @@ fun HomeScreen(
                         }
                     } else {
                         val top1Movie = activeList.first()
+                        AuroraFromPoster(top1Movie.posterUrl)
 
                         LazyColumn(
                             modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop),

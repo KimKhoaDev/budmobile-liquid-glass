@@ -1,5 +1,8 @@
 package com.phimbud.mobile
 
+import androidx.compose.runtime.rememberCoroutineScope
+import com.phimbud.mobile.ui.aurora.LocalAuroraController
+import com.phimbud.mobile.ui.aurora.AuroraController
 import androidx.savedstate.read
 import com.phimbud.mobile.ui.components.LocalAmbientBackdrop
 import com.phimbud.mobile.ui.components.AuroraBackground
@@ -114,6 +117,8 @@ fun App(
 
     PhimBudTheme {
         val glassController = remember { GlassSettingsController(repository.platformContext) }
+        val auroraScope = rememberCoroutineScope()
+        val auroraController = remember { AuroraController(repository.platformContext, auroraScope) }
         val ambientBackdrop = rememberGlassBackdropState()
         val navController = rememberNavController()
         val isLoggedIn by repository.isLoggedIn.collectAsState()
@@ -123,7 +128,8 @@ fun App(
         CompositionLocalProvider(
             LocalGlassSettings provides glassController.settings,
             LocalGlassSettingsController provides glassController,
-            LocalAmbientBackdrop provides ambientBackdrop
+            LocalAmbientBackdrop provides ambientBackdrop,
+            LocalAuroraController provides auroraController
         ) {
         Box(Modifier.fillMaxSize()) {
         // Wallpaper that every glass control refracts (and the visible app background).

@@ -1,5 +1,6 @@
 package com.phimbud.mobile.ui.screens.detail
 
+import com.phimbud.mobile.ui.aurora.AuroraFromPoster
 import com.phimbud.mobile.ui.components.heroZoom
 import com.phimbud.mobile.ui.components.entrance
 import com.phimbud.mobile.ui.components.LiquidGlassIconButton
@@ -138,6 +139,7 @@ fun DetailScreen(
             }
             is DetailUiState.Success -> {
                 val detail = state.detail
+                AuroraFromPoster(detail.posterUrl ?: detail.backdropUrl)
                 val genreItems = remember(detail.genreTags, detail.genres) {
                     if (detail.genreTags.isNotEmpty()) {
                         detail.genreTags

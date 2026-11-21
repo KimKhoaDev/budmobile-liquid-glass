@@ -19,6 +19,13 @@ enum class GlassAccent(val label: String, val color: Color) {
     PINK("Hồng", Color(0xFFFF375F))
 }
 
+/** What drives the colours of the ambient background glow. */
+enum class AuroraMode(val label: String) {
+    POSTER("Theo poster"),
+    ACCENT("Màu nhấn"),
+    OFF("Tắt")
+}
+
 /** User-customisable Liquid Glass appearance. */
 @Immutable
 data class GlassSettings(
@@ -31,14 +38,28 @@ data class GlassSettings(
     /** Spring "inflate" feedback when pressing glass controls. */
     val pressPhysics: Boolean = true,
     /** Lens refraction on the bottom bar / back button (Android only). */
-    val refraction: Boolean = true
+    val refraction: Boolean = true,
+    /** Where the background glow gets its colours from. */
+    val auroraMode: AuroraMode = AuroraMode.POSTER,
+    /** Brightness of the background glow. */
+    val auroraStrength: Float = DEFAULT_AURORA_STRENGTH,
+    /** Slowly drifting glow (animated; costs a little more battery). */
+    val auroraDrift: Boolean = false,
+    /** Light haptic ticks on toggles, tabs and chips. */
+    val haptics: Boolean = true
 ) {
-    fun normalized(): GlassSettings = copy(intensity = intensity.coerceIn(MIN_INTENSITY, MAX_INTENSITY))
+    fun normalized(): GlassSettings = copy(
+        intensity = intensity.coerceIn(MIN_INTENSITY, MAX_INTENSITY),
+        auroraStrength = auroraStrength.coerceIn(MIN_AURORA_STRENGTH, MAX_AURORA_STRENGTH)
+    )
 
     companion object {
         const val DEFAULT_INTENSITY = 1.0f
         const val MIN_INTENSITY = 0.5f
         const val MAX_INTENSITY = 1.6f
+        const val DEFAULT_AURORA_STRENGTH = 1.0f
+        const val MIN_AURORA_STRENGTH = 0.3f
+        const val MAX_AURORA_STRENGTH = 1.6f
     }
 }
 
@@ -67,7 +88,13 @@ class GlassSettingsController(platformContext: PlatformContext) {
                 ?.let { name -> GlassAccent.entries.firstOrNull { it.name == name } }
                 ?: defaults.accent,
             pressPhysics = store.getString(KEY_PRESS)?.toBooleanStrictOrNull() ?: defaults.pressPhysics,
-            refraction = store.getString(KEY_REFRACTION)?.toBooleanStrictOrNull() ?: defaults.refraction
+            refraction = store.getString(KEY_REFRACTION)?.toBooleanStrictOrNull() ?: defaults.refraction,
+            auroraMode = store.getString(KEY_AURORA_MODE)
+                ?.let { name -> AuroraMode.entries.firstOrNull { it.name == name } }
+                ?: defaults.auroraMode,
+            auroraStrength = store.getString(KEY_AURORA_STRENGTH)?.toFloatOrNull() ?: defaults.auroraStrength,
+            auroraDrift = store.getString(KEY_AURORA_DRIFT)?.toBooleanStrictOrNull() ?: defaults.auroraDrift,
+            haptics = store.getString(KEY_HAPTICS)?.toBooleanStrictOrNull() ?: defaults.haptics
         ).normalized()
     }
 
@@ -77,6 +104,10 @@ class GlassSettingsController(platformContext: PlatformContext) {
         if (value.accent != previous.accent) store.putString(KEY_ACCENT, value.accent.name)
         if (value.pressPhysics != previous.pressPhysics) store.putString(KEY_PRESS, value.pressPhysics.toString())
         if (value.refraction != previous.refraction) store.putString(KEY_REFRACTION, value.refraction.toString())
+        if (value.auroraMode != previous.auroraMode) store.putString(KEY_AURORA_MODE, value.auroraMode.name)
+        if (value.auroraStrength != previous.auroraStrength) store.putString(KEY_AURORA_STRENGTH, value.auroraStrength.toString())
+        if (value.auroraDrift != previous.auroraDrift) store.putString(KEY_AURORA_DRIFT, value.auroraDrift.toString())
+        if (value.haptics != previous.haptics) store.putString(KEY_HAPTICS, value.haptics.toString())
     }
 
     private companion object {
@@ -86,6 +117,10 @@ class GlassSettingsController(platformContext: PlatformContext) {
         const val KEY_ACCENT = "accent"
         const val KEY_PRESS = "press_physics"
         const val KEY_REFRACTION = "refraction"
+        const val KEY_AURORA_MODE = "aurora_mode"
+        const val KEY_AURORA_STRENGTH = "aurora_strength"
+        const val KEY_AURORA_DRIFT = "aurora_drift"
+        const val KEY_HAPTICS = "haptics"
     }
 }
 
